@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, user-scalable=no">
+        <style>
+            * {
+                box-sizing: border-box;
+                font-size: 1.15rem;
+                font-family: Arial, sans-serif;
+            }
+            html {
+                max-width: 70ch;
+                padding: 3rem 1rem;
+                margin: auto;
+                line-height: 1.25;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            h2 {
+                font-size: 1.5rem;
+            }
+            input {
+                line-height: 1.25;
+                width: 100%;
+                height: 1.8rem;
+                font-size: 1.15rem;
+                border: 1px solid grey;
+            }
+            .wallet {
+                height: 79vh;
+                max-width: 25rem;
+                border: 1px solid black;
+                border-radius: 1rem;
+                padding: 1rem;
+                width: 100%;
+                margin: auto;
+                background-color: #2c3e61;
+                color: white;
+            }
+            .balance {
+                margin-top: 3rem;
+                text-align: center;
+            }
+            .btns {
+                height: 70%;
+                display: flex;
+                justify-content: space-around;
+                align-items: flex-end;
+            }
+            .btns button {
+                padding: 1rem;
+                background-color: green;
+                color: white;
+                border-radius: 0.5rem;
+                width: 10rem;
+                cursor: pointer;
+            }
+            .black-bg {
+                display: none;
+                width: 100%;
+                position: fixed;
+                top: 0;
+                left: 0;
+                background-color: black;
+                opacity: .5;
+                width: 100vw;
+                height: 100vh;
+            }
+            .modal {
+                display: none;
+                position: fixed;
+                box-sizing: border-box;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%,-50%);
+                width: 100%;
+                max-width: 560px;
+                background-color: white;
+                border-radius: 1rem;
+                padding: 20px;
+                color: black;
+                text-align: center;
+                word-wrap: break-word;
+            }
+            .modal * {
+                color: black;
+            }
+            .hidden {
+                display: none;
+            }
+            @media screen and (max-width: 600px) {
+            }
+        </style>
+        <script>
+            var $ = document.querySelector.bind( document );
+            var $$ = document.querySelectorAll.bind( document );
+            var url_params = new URLSearchParams( window.location.search );
+            var url_keys = url_params.keys();
+            var $_GET = {}
+            for ( var key of url_keys ) $_GET[ key ] = url_params.get( key );
+            function modalVanish() {
+                $( ".black-bg" ).style.display = "none";
+                $( ".modal" ).style.display = "none";
+            }
+            function showModal( content ) {
+                $( ".modal" ).innerHTML = `<div style="position: absolute;right: 1rem;top: 0.5rem;font-size: 2rem; cursor: pointer; color: black;" onclick="modalVanish()">&times;</div>`;
+                $( ".modal" ).innerHTML += `<div style="overflow-y: auto; max-height: 80vh; margin-top: 1.5rem;">${content}</div>`;
+                $( ".black-bg" ).style.display = "block";
+                $( ".modal" ).style.display = "block";
+            }
+            function getData( url ) {
+                return new Promise( async function( resolve, reject ) {
+                    function inner_get( url ) {
+                        var xhttp = new XMLHttpRequest();
+                        xhttp.open( "GET", url, true );
+                        xhttp.send();
+                        return xhttp;
+                    }
+                    var data = inner_get( url );
+                    data.onerror = function( e ) {
+                        resolve( "error" );
+                    }
+                    async function isResponseReady() {
+                        return new Promise( function( resolve2, reject ) {
+                            if ( !data.responseText || data.readyState != 4 ) {
+                                setTimeout( async function() {
+                                    var msg = await isResponseReady();
+                                    resolve2( msg );
+                                }, 1 );
+                            } else {
+                                resolve2( data.responseText );
+                            }
+                        });
+                    }
+                    var returnable = await isResponseReady();
+                    resolve( returnable );
+                });
+            }
+            var checkStatusOnLoop = async invoice => {
+                var status = await getData( `http://127.0.0.1:8081/check_invoice/?invoice=${invoice}` );
+                if ( status != "settled" ) {
+                    await waitSomeSeconds( 2 );
+                    console.log( "looping..." );
+                    status = await checkStatusOnLoop( invoice );
+                }
+                return status;
+            }
+            var waitSomeSeconds = num => {
+                var num = num.toString() + "000";
+                num = Number( num );
+                return new Promise( resolve => setTimeout( resolve, num ) );
+            }
+
+        </script>
+    </head>
+    <body>
+        <div class="wallet">
+            <div class="balance"><span class="balance_num">10520</span> sats</div>
+            <div class="btns">
+                <button class="Send">Send</button>
+                <button class="receive">Receive</button>
+            </div>
+        </div>
+        <script>
+            $( '.receive' ).onclick = async () => {
+                var content = `
+                    <p>Enter an amount</p>
+                    <input class="amount" type="number">
+                    <p><button class="advanced_btn">⚙️ Advanced</button></p>
+                    <div class="advanced hidden">
+                        <p>Enter a custom preimage</p>
+                        <input class="preimage" type="preimage">
+                    </div>
+                    <p><button class="submit">Submit</button></p>
+                `;
+                showModal( content );
+                $( '.advanced_btn' ).onclick = () => {
+                    $( '.advanced_btn' ).classList.add( "hidden" );
+                    $( '.advanced' ).classList.remove( "hidden" );
+                }
+                $( '.submit' ).onclick = async () => {
+                    var amount_to_add = Number( $( '.amount' ).value );
+                    var preimage = $( '.preimage' ).value;
+                    console.log( amount_to_add, preimage );
+                    var invoice = await getData( `http://127.0.0.1:8081/custom_invoice/?preimage=${preimage}&amount=${amount_to_add}` );
+                    // var invoice = "lntb100u1pjwz9p0pp52gt57gulyhwzwyyp4yf2yxttvnays0pazynatgaydev9pzspxdrshp5zcq2ntjsndrth9gxcsrq0uhtlm7dd2zu7raqwdphhttjh4rltmpqcqzpgxqyz5vqsp50qw96dm9d8zmnj604ekjc6v5wl0feqheuqcxf4039jc6rwyptx0s9qyyssq8ertccett323h7kew872pfdeyxhqeuu626a0macnl4yt6cxljjpkg0amuj5yltx9lxrwdd7r2ya5q6hfesnfypy08k4un2r9qmxt3tgpct5k9p";
+                    // var invoice = "lntb10u1pjwzfafpp5gtfdzfpkwy3ex3q302vkaydjey64z78h9ealpvcs0zhkrddhp9tqdqqcqzpgxqyz5vqsp5ln30q3mkdaw2xcna8m9xm7yswjdyt9cdwmyvuuzv8c6s64rk7mes9qyyssqvjh2608pv2pyarmf5tpfgpu0usjed6wghnrr7vmtw3pq40upp8zswfssaet27f0se9uvsrf6293n7h4z4e3c3mzt27za07sqjw4mlfsqzr37m2";
+                    showModal( `<p>Your invoice is ${invoice}` );
+                    await checkStatusOnLoop( invoice );
+                    var balance = Number( $( '.balance_num' ).innerText );
+                    $( '.balance_num' ).innerText = balance + amount_to_add;
+                    modalVanish();
+                }
+            }
+        </script>
+        <div class="black-bg" onclick="modalVanish();"></div>
+        <div class="modal"></div>
+    </body>
+</html>
