@@ -575,8 +575,8 @@
                                 var txid = tx_array[0];
                                 var txindex = tx_array[1];
                                 var amount_received = tx_array[2];
-                                if ( amount_received < amount_expected_in_swap_address && Math.abs( amount_received - amount_expected_in_swap_address ) / amount_expected_in_swap_address > .02 ) return showModal( "Server tried to scam you, aborting trade! Amount received: " + amount_received + " Amount expected: " + amount_expected_in_swap_address, " Equality: " + amount_received === amount_expected_in_swap_address );
-                                console.log( "Amount received: " + amount_received + " Amount expected: " + amount_expected_in_swap_address, " Equality: " + amount_received === amount_expected_in_swap_address );
+                                if ( Number( amount_received ) < Number( amount_expected_in_swap_address ) && Math.abs( Number( amount_received ) - Number( amount_expected_in_swap_address ) ) / Number( amount_expected_in_swap_address ) > .02 ) return showModal( "Server tried to scam you, aborting trade! Amount received: " + Number( amount_received ) + " Amount expected: " + Number( amount_expected_in_swap_address ) + " Equality: " + Number( amount_received ) === Number( amount_expected_in_swap_address ) );
+                                console.log( "Amount received: " + Number( amount_received ) + " Amount expected: " + Number( amount_expected_in_swap_address ) + " Equality: " + Number( amount_received ) === Number( amount_expected_in_swap_address ) );
                                 var original_quantity_of_sats = amount_received;
                                 var feerate = await getMinFeeRate();
                                 var new_quantity_of_sats = amount_received - ( feerate * 200 );
