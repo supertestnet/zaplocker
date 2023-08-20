@@ -35,8 +35,6 @@ var WebSocketClient = ws.client;
 var axios = require('axios');
 var path = require('path');
 
-var permakey = "abababababababababababababababababababababababababababababababab";
-var permapub = nobleSecp256k1.getPublicKey( permakey, true );
 var privKey = ECPair.makeRandom().privateKey.toString( "hex" );
 var pubKeyMinus2 = nobleSecp256k1.getPublicKey( privKey, true ).substring( 2 );
 console.log( "my privkey:", privKey );
@@ -201,18 +199,20 @@ var getUserByUsername = name => {
 
 var getPaymentByHash = hash => {
   var pmt = "";
+  var idx = "";
   var i; for ( i=0; i<Object.keys( users ).length; i++ ) {
     var user = Object.keys( users )[ i ];
     users[ user ][ "pending" ].every( ( pending, index ) => {
       if ( pending[ "pmthash" ] === hash ) {
         pmt = pending;
+        idx = index;
         return;
       }
       return true;
     });
     if ( pmt ) break;
   }
-  return pmt;
+  return [pmt, idx];
 }
 
 async function getNostrNote( id, relay ) {
@@ -773,6 +773,117 @@ async function paymentIsPending( invoice, amount ) {
     return true;
 }
 
+async function payInvoiceAndSettleWithPreimage( invoice ) {
+    var preimage = "";
+    var users_pmthash = getinvoicepmthash( invoice );
+    var state_of_held_invoice_with_that_hash = await checkInvoiceStatusWithoutLoop( users_pmthash );
+    if ( state_of_held_invoice_with_that_hash != "ACCEPTED" ) {
+        return "nice try, asking me to pay an invoice without compensation: " + state_of_held_invoice_with_that_hash;
+    }
+    var amount_i_will_receive = await getInvoiceAmount( users_pmthash );
+    var amount_i_am_asked_to_pay = get_amount_i_am_asked_to_pay( invoice );
+    var feerate = await getMinFeeRate( "testnet/" );
+    if ( fee_type === 'absolute' ) {
+      var post_fee_amount = Number( amount_i_will_receive ) + fee;
+    } else {
+      var post_fee_amount = Number( amount_i_will_receive ) * ( ( 100 + fee ) / 100 );
+    }
+    post_fee_amount = Number( post_fee_amount.toFixed( 0 ) );
+    var swap_fee = post_fee_amount - Number( amount_i_will_receive );
+    if ( Number( amount_i_am_asked_to_pay ) > Number( amount_i_will_receive ) - swap_fee ) {
+        return "nice try, asking me to send more than I will receive as compensation";
+    }
+    //use the creation date of the invoice that pays me to estimate the block when that invoice was created
+    //do that by getting the current unix timestamp, the current blockheight, and the invoice creation timestamp,
+    var invoice_creation_timestamp = await getInvoiceCreationTimestamp( users_pmthash );
+    invoice_creation_timestamp = Number( invoice_creation_timestamp );
+    var current_unix_timestamp = Number( Math.floor( Date.now() / 1000 ) );
+    var current_blockheight = await getBlockheight( "testnet/" );
+    current_blockheight = Number( current_blockheight );
+    //then subtract X units of 600 seconds from the current timestamp til it is less than the invoice creation timestmap,
+    var blocks_til_expiry = await getInvoiceHardExpiry( users_pmthash );
+    blocks_til_expiry = Number( blocks_til_expiry );
+    var units_of_600 = 0;
+    var i; for ( i=0; i<blocks_til_expiry; i++ ) {
+        var interim_unix_timestamp = current_unix_timestamp - ( ( ( units_of_600 ) + 1 ) * 600 );
+        units_of_600 = units_of_600 + 1
+        if ( interim_unix_timestamp < invoice_creation_timestamp ) {
+            break;
+        }
+    }
+    //then subtract X from the current blockheight to get an estimated block when my invoice was created, then add blocks_til_expiry to it
+    //assign the result to a variable called block_when_i_consider_the_invoice_that_pays_me_to_expire
+    var block_when_i_consider_the_invoice_that_pays_me_to_expire = ( current_blockheight - units_of_600 ) + blocks_til_expiry;
+    //get the current blockheight and, to it, add the cltv_expiry value of the invoice I am asked to pay (should be 40 usually)
+    //assign the result to a variable called block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire
+    var expiry_of_invoice_that_pays_me = await getInvoiceHardExpiry( users_pmthash );
+    var expiry_of_invoice_i_am_asked_to_pay = await get_hard_expiry_of_invoice_i_am_asked_to_pay( invoice );
+    var block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire = current_blockheight + Number( expiry_of_invoice_i_am_asked_to_pay );
+    //abort if block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire > block_when_i_consider_the_invoice_that_pays_me_to_expire
+    if ( Number( block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire ) > Number( block_when_i_consider_the_invoice_that_pays_me_to_expire ) ) {
+        return "nice try, asking me to pay you when the invoice that pays me is about to expire";
+    }
+    //because that would mean the recipient can hold my payment til after the invoice that pays me expires
+    //then he could settle my payment to him but leave me unable to reimburse myself (because the invoice that pays me expired)
+    //also, when sending my payment, remember to set the cltv_limit value
+    //it should be positive and equal to block_when_i_consider_the_invoice_that_pays_me_to_expire - current_blockheight
+    var cltv_limit = Number( block_when_i_consider_the_invoice_that_pays_me_to_expire ) - current_blockheight;
+    if ( cltv_limit < 40 ) return alert( "Oh no! The cltv limit was too low" );
+    var adminmacaroon = adminmac;
+    var endpoint = lndendpoint;
+    var max_fee = swap_fee - 1;
+    if ( max_fee > 500 ) max_fee = 500;
+    let requestBody = {
+        payment_request: invoice,
+        fee_limit: {"fixed": String( max_fee )},
+        allow_self_payment: true,
+        cltv_limit: Number( cltv_limit )
+    }
+    let options = {
+        url: endpoint + '/v1/channels/transactions',
+        // Work-around for self-signed certificates.
+        rejectUnauthorized: false,
+        json: true,
+        headers: {
+          'Grpc-Metadata-macaroon': adminmacaroon,
+        },
+        form: JSON.stringify( requestBody ),
+    }
+    request.post( options, function( error, response, body ) {
+        console.log( "here is the body:", body );
+        if ( !body[ "payment_preimage" ] ) preimage = `error: ${body[ "payment_error" ]}`;
+        else preimage = body[ "payment_preimage" ];
+    });
+    async function isDataSetYet( data_i_seek ) {
+        return new Promise( function( resolve, reject ) {
+            if ( data_i_seek == "" ) {
+                setTimeout( async function() {
+                    var msg = await isDataSetYet( preimage );
+                    resolve( msg );
+                }, 100 );
+            } else {
+                resolve( data_i_seek );
+            }
+        });
+    }
+    async function getTimeoutData() {
+        var data_i_seek = await isDataSetYet( preimage );
+        return data_i_seek;
+    }
+    var preimage_for_settling_invoice_that_pays_me = await getTimeoutData();
+    if ( preimage_for_settling_invoice_that_pays_me != "" && !preimage_for_settling_invoice_that_pays_me.includes( "error" ) ) {
+        preimage_for_settling_invoice_that_pays_me = Buffer.from( preimage_for_settling_invoice_that_pays_me, "base64" ).toString( "hex" );
+        console.log( "preimage that pays me:", preimage_for_settling_invoice_that_pays_me );
+        settleHoldInvoice( preimage_for_settling_invoice_that_pays_me );
+        returnable = '{"status": "success","preimage":"' + preimage_for_settling_invoice_that_pays_me + '"}';
+        destroyOldPendings();
+    } else {
+        returnable = '{"status": "failure"}';
+    }
+    deal_in_progress = false;
+    return returnable;
+}
+
 async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
     var txid_of_deposit = "";
     var users_pmthash = getinvoicepmthash( invoice );
@@ -891,6 +1002,13 @@ function waitSomeSeconds( num ) {
     });
 }
 
+function isValidInvoice( invoice ) {
+    try{
+        return ( typeof( bolt11.decode( invoice ) ) == "object" );
+    } catch( e ) {
+        return;
+    }
+}
 
 function get_amount_i_am_asked_to_pay( invoice ) {
     var decoded = bolt11.decode( invoice );
@@ -1138,6 +1256,18 @@ if ( fs.existsSync( "users.txt" ) ) {
   var users = JSON.parse( dbtext );
 }
 
+var permakey = "";
+var permapub = "";
+
+if ( fs.existsSync( "privkey.txt" ) ) {
+  permakey = fs.readFileSync( "privkey.txt" ).toString();
+  permapub = nobleSecp256k1.getPublicKey( permakey, true );
+} else {
+  permakey = Buffer.from( nobleSecp256k1.utils.randomPrivateKey() ).toString( "hex" );
+  permapub = nobleSecp256k1.getPublicKey( permakey, true );
+  fs.writeFileSync( "privkey.txt", permakey, function() {return;});
+}
+
 var allowed_routes = [
   "/test_username",
   "/test_pubkey",
@@ -1148,7 +1278,7 @@ var allowed_routes = [
   "/wallet",
   "/custom_invoice",
   "/check_invoice",
-  "/get_payment"
+  "/pay_invoice"
 ];
 
 var sendResponse = ( response, data, statusCode, content_type ) => {
@@ -1192,8 +1322,14 @@ const requestListener = async function( request, response ) {
     return;
   }
   if ( request.method === 'GET' ) {
-    if ( parts.path.startsWith( "/get_payment" ) ) {
-      sendResponse( response, html, 200, {'Content-Type': 'text/html; charset=utf-8'} );
+    if ( parts.path.startsWith( "/pay_invoice" ) ) {
+      if ( !$_GET[ "invoice" ] || !isValidInvoice( $_GET[ "invoice" ] ) ) {
+        sendResponse( response, 'error: invalid invoice', 200, {'Content-Type': 'text/plain'} );
+        return;
+      }
+      var status = await payInvoiceAndSettleWithPreimage( $_GET[ "invoice" ] );
+      destroyOldPendings();
+      sendResponse( response, status, 200, {'Content-Type': 'application/json'} );
       return;
     }
     if ( parts.path === "/" ) {
@@ -1253,11 +1389,15 @@ const requestListener = async function( request, response ) {
         sendResponse( response, 'error: invalid swap details', 200, {'Content-Type': 'text/plain'} );
         return;
       }
-      var pmt = getPaymentByHash( $_GET[ "pmthash" ] );
-      if ( !pmt ) {
+      var pmt = getPaymentByHash( $_GET[ "pmthash" ] )[ 0 ];
+      var idx = getPaymentByHash( $_GET[ "pmthash" ] )[ 1 ];
+      if ( !pmt || pmt[ "status" ] != "ready" ) {
         sendResponse( response, 'error: invalid swap details', 200, {'Content-Type': 'text/plain'} );
         return;
       }
+      users[ pmt[ "user_pubkey" ] ][ "pending" ][ idx ].status = "swap_in_progress";
+      var texttowrite = JSON.stringify( users );
+      fs.writeFileSync( "users.txt", texttowrite, function() {return;});
       var current_blockheight = await getBlockheight( "testnet/" );
       var timelock = current_blockheight + 10;
       var witness_script = generateHtlc(
@@ -1377,7 +1517,7 @@ const requestListener = async function( request, response ) {
       var desc_hash = sha256( desc );
       var pmthash = users[ user_pubkey ][ "this_users_hashes" ][ index_of_first_unused_pmthash ][ 0 ];
       console.log( amount );
-      var swap_invoice = await getHodlInvoice( amount, pmthash, 40, desc_hash );
+      var swap_invoice = await getHodlInvoice( amount, pmthash, 100, desc_hash );
       if ( !swap_invoice ) {
         deal_in_progress = false;
         return;
@@ -1412,7 +1552,7 @@ const requestListener = async function( request, response ) {
       var swap_fee = post_fee_amount - amount;
       var current_blockheight = await getBlockheight( "testnet/" );
       expires = Number( expires ) + Number( current_blockheight );
-      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee});
+      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey});
       var texttowrite = JSON.stringify( users );
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
       //todo: use nostr to give a zap receipt if the payment was a zap
