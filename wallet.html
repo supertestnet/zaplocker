@@ -139,7 +139,7 @@
                 });
             }
             var checkStatusOnLoop = async invoice => {
-                var status = await getData( `http://127.0.0.1:8081/check_invoice/?invoice=${invoice}` );
+                var status = await getData( `https://1195-108-178-83-138.ngrok-free.app/check_invoice/?invoice=${invoice}` );
                 if ( status != "settled" ) {
                     await waitSomeSeconds( 2 );
                     console.log( "looping..." );
@@ -184,7 +184,7 @@
                     var amount_to_add = Number( $( '.amount' ).value );
                     var preimage = $( '.preimage' ).value;
                     console.log( amount_to_add, preimage );
-                    var invoice = await getData( `http://127.0.0.1:8081/custom_invoice/?preimage=${preimage}&amount=${amount_to_add}` );
+                    var invoice = await getData( `https://1195-108-178-83-138.ngrok-free.app/custom_invoice/?preimage=${preimage}&amount=${amount_to_add}` );
                     // var invoice = "lntb100u1pjwz9p0pp52gt57gulyhwzwyyp4yf2yxttvnays0pazynatgaydev9pzspxdrshp5zcq2ntjsndrth9gxcsrq0uhtlm7dd2zu7raqwdphhttjh4rltmpqcqzpgxqyz5vqsp50qw96dm9d8zmnj604ekjc6v5wl0feqheuqcxf4039jc6rwyptx0s9qyyssq8ertccett323h7kew872pfdeyxhqeuu626a0macnl4yt6cxljjpkg0amuj5yltx9lxrwdd7r2ya5q6hfesnfypy08k4un2r9qmxt3tgpct5k9p";
                     // var invoice = "lntb10u1pjwzfafpp5gtfdzfpkwy3ex3q302vkaydjey64z78h9ealpvcs0zhkrddhp9tqdqqcqzpgxqyz5vqsp5ln30q3mkdaw2xcna8m9xm7yswjdyt9cdwmyvuuzv8c6s64rk7mes9qyyssqvjh2608pv2pyarmf5tpfgpu0usjed6wghnrr7vmtw3pq40upp8zswfssaet27f0se9uvsrf6293n7h4z4e3c3mzt27za07sqjw4mlfsqzr37m2";
                     showModal( `<p>Your invoice is ${invoice}` );
