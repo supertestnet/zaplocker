@@ -4,9 +4,9 @@ THESE NEXT LINES ARE CUSTOMIZABLE SETTINGS
 
 */
 
-var invoicemac = "0201036c6e640258030a1041f7ff66db876ee466cfd683452de8c61201301a160a0761646472657373120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a0f0a076f6e636861696e12047265616400000620664fb824326207c2ebfe90c1716c7ae6fa074407e0960b24b482b20c2599bc6a";
-var adminmac = "0201036c6e6402f801030a1043f7ff66db876ee466cfd683452de8c61201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e65726174651204726561640000062022840d6628ea0bfa93cb46bf26f60eb8fbb1497dbbaebd55e269c6303da063f4";
-var lndendpoint = "https://127.0.0.1:8080"; //e.g. https://127.0.0.1:8080 or https://cloud-59.voltage.com
+var invoicemac = "";
+var adminmac = "";
+var lndendpoint = ""; //e.g. https://127.0.0.1:8080 or https://cloud-59.voltage.com
 var fee_type = "relative"; //alternative: "absolute"
 var fee = 5; //if fee type is absolute, this integer is a flat rate, e.g. you will get 5 sats per swap; otherwise you get a rate corresponding to e.g. 5% of each swap
 
@@ -376,12 +376,15 @@ async function setNote( note, relay, recipientpubkey ) {
     return returnable;
 }
 
-var eventWasReplayedTilSeen = async ( event, the_relay ) => {
+var eventWasReplayedTilSeen = async ( event, the_relay, num ) => {
+    if ( !num ) num = 0;
     var note = await getNostrNote( event.id, the_relay );
     if ( note != "time is up" ) return true;
-    console.log( "replaying..." );
+    console.log( "replaying this event:", event.id, "at this relay:", the_relay );
+    num = num + 1;
     await setNote( event, the_relay );
-    var was_seen = await eventWasReplayedTilSeen( event, the_relay );
+    var was_seen = false;
+    if ( num < 6 ) was_seen = await eventWasReplayedTilSeen( event, the_relay, num );
     return was_seen;
 }
 
@@ -1534,9 +1537,9 @@ const requestListener = async function( request, response ) {
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
       var payment_is_pending = await paymentIsPending( swap_invoice, amount );
       //notify the recipient that it's time to settle their payment
-      var event = await makeEvent( `This is your lightning address. You have a pending payment for ${amount} sats. To collect it, come to our website and paste this payment hash: ${pmthash}`, users[ user_pubkey ][ "user_pubkey" ] );
+      var event = await makeEvent( `This is your lightning address. You have a pending payment for ${amount} sats. Come to our website to collect it.` );
       var was_seen = await eventWasReplayedTilSeen( event, users[ user_pubkey ][ "relay" ] );
-      console.log( was_seen );
+      console.log( "the event was seen, right?", was_seen );
       //add an entry to the user's pending payments
       //make it say what the amount is and when the invoice is expected to expire
       //(which I can get using the getInvoiceHardExpiry() function) -- that way when
