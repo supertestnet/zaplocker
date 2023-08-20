@@ -99,6 +99,10 @@
             .loaded_paycode {
                 word-wrap: break-word;
             }
+            .tan {
+                background-color: tan;
+                padding: 1rem;
+            }
             @media screen and (max-width: 600px) {
             }
         </style>
@@ -112,8 +116,6 @@
         </script>
         <script>
             var user_pubkey = null;
-            var swap_privkey = bytesToHex( nobleSecp256k1.utils.randomBytes() );
-            var swap_pubkey = nobleSecp256k1.getPublicKey( swap_privkey, true );
             function modalVanish() {
                 $( ".black-bg" ).style.display = "none";
                 $( ".modal" ).style.display = "none";
@@ -509,6 +511,7 @@
                     var feerate = await getMinFeeRate();
                     var mining_fee = ( feerate * 200 ) * 2;
                     var amount_expected = pending_pmt[ "amount" ] - pending_pmt[ "swap_fee" ] - mining_fee;
+                    var amount_expected_ln = pending_pmt[ "amount" ] - pending_pmt[ "swap_fee" ];
                     html += `
                         <div class="pending_pmt">
                             Amount sent: ${pending_pmt[ "amount" ]} sats<br>
@@ -528,6 +531,8 @@
                         $( '.loaded_pending' ).append( div1 );
                         $$( '.settle_bl' ).forEach( button => {
                             button.onclick = async b => {
+                                var swap_privkey = bytesToHex( nobleSecp256k1.utils.randomBytes() );
+                                var swap_pubkey = nobleSecp256k1.getPublicKey( swap_privkey, true );
                                 var current_blockheight = await getBlockheight( "testnet/" );
                                 console.log( "blockheight:", current_blockheight );
                                 var preimage = b.target.getAttribute( "data-preimage" );
@@ -598,8 +603,27 @@
                             }
                         });
                         $$( '.settle_ln' ).forEach( button => {
-                            button.onclick = async () => {
-                                return showModal( `This feature doesn't work yet, try again later` );
+                            button.onclick = async b => {
+                                var preimage = b.target.getAttribute( "data-preimage" );
+                                var content = `
+                                    <p>Enter an invoice with the following amount</p>
+                                    <div class="tan">${amount_expected_ln}</div>
+                                    <p>And the following preimage</p>
+                                    <div class="tan">${preimage}</div>
+                                    <p><input class="user_invoice" placeholder="Enter your invoice here"></p>
+                                    <p><button class="invoice_submitter">Submit</button></p>
+                                `;
+                                showModal( content );
+                                $( '.invoice_submitter' ).onclick = async () => {
+                                    var invoice = $( '.user_invoice' ).value;
+                                    var status = await getData( window.location.protocol + "//" + window.location.hostname + port + `/pay_invoice/?invoice=${invoice}` );
+                                    console.log( "status:", status );
+                                    if ( status.includes( "success" ) ) {
+                                        showModal( `Success, your invoice was settled. Now go in peace.` );
+                                    } else {
+                                        showModal( `Oh no, we couldn't find a route to you! Consider using the base layer to settle or try again later.` );
+                                    }
+                                }
                             }
                         });
                     }
