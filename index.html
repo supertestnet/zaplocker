@@ -4,6 +4,7 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, user-scalable=no">
         <script src="https://bitcoincore.tech/apps/bitcoinjs-ui/lib/bitcoinjs-lib.js"></script>
+        <script src="https://bundle.run/browserify-cipher@1.0.1"></script>
         <script src="https://bundle.run/noble-secp256k1@1.2.14"></script>
         <script src="https://bundle.run/varuint-bitcoin@1.1.2"></script>
         <script src="https://bundle.run/base58check@2.0.0"></script>
@@ -115,6 +116,17 @@
             for ( var key of url_keys ) $_GET[ key ] = url_params.get( key );
         </script>
         <script>
+            var { getSharedSecret, schnorr, utils } = nobleSecp256k1;
+            var crypto  = window.crypto;
+            var getRand = size => crypto.getRandomValues(new Uint8Array(size));
+            var sha256  = bitcoinjs.crypto.sha256;
+            var keypair = bitcoinjs.ECPair.makeRandom();
+            var privKey = keypair.privateKey.toString( "hex" );
+            var pubKey  = keypair.publicKey.toString( "hex" );
+            pubKey      = pubKey.substring( 2 );
+            console.log( pubKey );
+        </script>
+        <script>
             var user_pubkey = null;
             function modalVanish() {
                 $( ".black-bg" ).style.display = "none";
@@ -126,16 +138,6 @@
                 $( ".modal" ).innerHTML += `<div style="overflow-y: auto; max-height: 80vh; margin-top: 1.5rem;">${content}</div>`;
                 $( ".black-bg" ).style.display = "block";
                 $( ".modal" ).style.display = "block";
-            }
-            var sha256 = s => {
-                if ( typeof s == "string" ) s = new TextEncoder().encode( s );
-                return crypto.subtle.digest( 'SHA-256', s ).then( hashBuffer => {
-                    var hashArray = Array.from( new Uint8Array( hashBuffer ) );
-                    var hashHex = hashArray
-                        .map( bytes => bytes.toString( 16 ).padStart( 2, '0' ) )
-                        .join( '' );
-                    return hashHex;
-                });
             }
             function hexToBytes( hex ) {
                 return Uint8Array.from( hex.match( /.{1,2}/g ).map( ( byte ) => parseInt( byte, 16 ) ) );
@@ -497,7 +499,7 @@
                     var matching_preimage;
                     var i; for ( i=0; i<preimages.match(/.{1,64}/g).length; i++ ) {
                         var preimage = preimages.match(/.{1,64}/g)[ i ];
-                        hash = await sha256( hexToBytes( preimage ) );
+                        hash = bytesToHex( sha256( hexToBytes( preimage ) ) );
                         if ( hash === pmthash ) {
                             matching_preimage = preimage;
                             break;
@@ -538,7 +540,7 @@
                                 var current_blockheight = await getBlockheight( "testnet/" );
                                 console.log( "blockheight:", current_blockheight );
                                 var preimage = b.target.getAttribute( "data-preimage" );
-                                var pmthash = await sha256( hexToBytes( preimage ) );
+                                var pmthash = bytesToHex( sha256( hexToBytes( preimage ) ) );
                                 var serverPubkey = b.target.getAttribute( "data-serverpub" );
                                 var timelock = current_blockheight + 10;
                                 var witness_script = generateHtlc(
@@ -630,6 +632,145 @@
                         });
                     }
                 });
+            }
+            var eventWasReplayedTilSeen = async ( event, the_relay, num ) => {
+                if ( !num ) num = 0;
+                var note = await getNostrNote( event.id, the_relay );
+                if ( note != "time is up" ) return true;
+                console.log( "replaying this event:", event.id, "at this relay:", the_relay );
+                num = num + 1;
+                await setNote( event, null, the_relay );
+                var was_seen = false;
+                if ( num < 6 ) was_seen = await eventWasReplayedTilSeen( event, the_relay, num );
+                return was_seen;
+            }
+            var makeEvent = async ( note, recipientpubkey ) => {
+              var now = Math.floor( ( new Date().getTime() ) / 1000 );
+              if ( recipientpubkey ) {
+                note = encrypt( privKey, recipientpubkey, note );
+                var newevent = [
+                  0,
+                  pubKey,
+                  now,
+                  4,
+                  [['p', recipientpubkey]],
+                  note
+                ];
+              } else {
+                var newevent = [
+                  0,
+                  pubKey,
+                  now,
+                  1,
+                  [],
+                  note
+                ];    
+              }
+              var message = JSON.stringify( newevent );
+              var msghash = bytesToHex( sha256( message ) );
+              var sig = await nobleSecp256k1.schnorr.sign( msghash, privKey );
+              var fullevent = {
+                "id": msghash,
+                "pubkey": pubKey,
+                "created_at": now,
+                "kind": recipientpubkey ? 4 : 1,
+                "tags": recipientpubkey ? [['p', recipientpubkey]] : [],
+                "content": note,
+                "sig": sig
+              }
+              return fullevent;
+            }
+            async function getNostrNote( id, the_relay ) {
+                var started_waiting_time = Math.floor( Date.now() / 1000 );
+                var note = "";
+                var relays = [the_relay];
+                var i; for ( i=0; i<relays.length; i++ ) {
+                    var myrelay = relays[ i ];
+                    socket = new WebSocket( myrelay );
+                    socket.addEventListener( 'message', async function( event ) {
+                        var event = JSON.parse( event.data );
+                        if ( !event[ 2 ] ) return;
+                        // console.log( "got an event!", event );
+                        var sig = event[ 2 ].sig;
+                        var eventData = JSON.stringify([
+                            0,                  // Reserved for future use
+                            event[ 2 ]['pubkey'],       // The sender's public key
+                            event[ 2 ]['created_at'],   // Unix timestamp
+                            event[ 2 ]['kind'],     // Message “kind” or type
+                            event[ 2 ]['tags'],     // Tags identify replies/recipients
+                            event[ 2 ]['content']       // Your note contents
+                        ]);
+                        var id  = sha256( eventData ).toString( 'hex' );
+                        var pubKeyPlusOne = ( BigInt( "0x" + pubKey ) + BigInt( "0x" + pubKey ) ).toString( 16 ).substring( 0, 64 );
+                        var valid = await nobleSecp256k1.schnorr.verify( sig, id, event[ 2 ].pubkey );
+                        if ( valid ) note = event[ 2 ].content;
+                    });
+                    socket.addEventListener( 'open', function open() {
+                        var randomid = bitcoinjs.ECPair.makeRandom().privateKey.toString( "hex" ).substring( 0, 16 );
+                        var filter = {
+                            "ids": [
+                                id
+                            ]
+                        }
+                        var subscription = [ "REQ", randomid, filter ];
+                        subscription = JSON.stringify( subscription );
+                        var chaser = [ "CLOSE", randomid ];
+                        chaser = JSON.stringify( chaser );
+                        socket.send( subscription );
+                        setTimeout( function() {socket.send( chaser );}, 1000 );
+                        setTimeout( function() {socket.close();}, 2000 );
+                    });
+                    async function isNoteSetYet( note_i_seek ) {
+                        return new Promise( function( resolve, reject ) {
+                            if ( !note_i_seek ) {
+                                var current_time = Math.floor( Date.now() / 1000 );
+                                if ( started_waiting_time + 5 < current_time ) {
+                                    resolve( "time is up" );
+                                }
+                                setTimeout( async function() {
+                                    var msg = await isNoteSetYet( note );
+                                    resolve( msg );
+                                }, 100 );
+                            } else {
+                                resolve( note_i_seek );
+                            }
+                        });
+                    }
+                    async function getTimeoutData() {
+                        var note_i_seek = await isNoteSetYet( note );
+                        return note_i_seek;
+                    }
+                    var returnable = await getTimeoutData();
+                    return returnable;
+                }
+            }
+            var setNote = async ( note_or_event, recipient, relay ) => {
+                if ( typeof note_or_event == "string" ) var event = await makeEvent( note_or_event, recipient );
+                else var event = note_or_event;
+                var mysocket = new WebSocket( relay );
+                mysocket.addEventListener( "open", () => mysocket.send( JSON.stringify( ["EVENT", event ] ) ) );
+            }
+            function encrypt( privkey, pubkey, text ) {
+                var key = nobleSecp256k1.getSharedSecret( privkey, '02' + pubkey, true ).substring( 2 );
+                var iv = window.crypto.getRandomValues(new Uint8Array(16));
+                var cipher = browserifyCipher.createCipheriv( 'aes-256-cbc', hexToBytes( key ), iv );
+                var encryptedMessage = cipher.update(text,"utf8","base64");
+                emsg = encryptedMessage + cipher.final( "base64" );
+                var uint8View = new Uint8Array( iv.buffer );
+                var decoder = new TextDecoder();
+                return emsg + "?iv=" + btoa( String.fromCharCode.apply( null, uint8View ) );
+            }
+            function decrypt( privkey, pubkey, ciphertext ) {
+                var [ emsg, iv ] = ciphertext.split( "?iv=" );
+                var key = nobleSecp256k1.getSharedSecret( privkey, '02' + pubkey, true ).substring( 2 );
+                var decipher = browserifyCipher.createDecipheriv(
+                    'aes-256-cbc',
+                    hexToBytes( key ),
+                    hexToBytes( base64ToHex( iv ) )
+                );
+                var decryptedMessage = decipher.update( emsg, "base64" );
+                dmsg = decryptedMessage + decipher.final( "utf8" );
+                return dmsg;
             }
         </script>
     </head>
@@ -732,6 +873,9 @@
                         if ( !username || username.length > 64 ) return alert( "Please enter a username" );
                         if ( !relay  || !relay.startsWith( "wss://" ) || relay.length < 10 || !relay.includes( "." ) ) return alert( "Please enter a valid relay" );
                         showModal( `creating your lightning address...` );
+                        var event = await makeEvent( "test", pubKey );
+                        var was_seen = await eventWasReplayedTilSeen( event, relay );
+                        if ( !was_seen ) return showModal( `That relay won't accept our dms, please use a different one` );
                         var preimages = "";
                         var sigs = "";
                         var i; for ( i=0; i<1000; i++ ) {
@@ -741,7 +885,7 @@
                         var i; for ( i=0; i<preimages.match(/.{1,64}/g).length; i++ ) {
                             var index = i;
                             var preimage = preimages.match(/.{1,64}/g)[ i ];
-                            hash = await sha256( hexToBytes( preimage ) );
+                            hash = bytesToHex( sha256( hexToBytes( preimage ) ) );
                             hashes += hash;
                             sig = await window.nostr.signSchnorr( hash );
                             sigs += sig;
