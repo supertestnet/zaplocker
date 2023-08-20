@@ -1537,7 +1537,7 @@ const requestListener = async function( request, response ) {
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
       var payment_is_pending = await paymentIsPending( swap_invoice, amount );
       //notify the recipient that it's time to settle their payment
-      var event = await makeEvent( `This is your lightning address. You have a pending payment for ${amount} sats. Come to our website to collect it.` );
+      var event = await makeEvent( `This is your lightning address. You have a pending payment for ${amount} sats. Come to our website to collect it.`, user_pubkey );
       var was_seen = await eventWasReplayedTilSeen( event, users[ user_pubkey ][ "relay" ] );
       console.log( "the event was seen, right?", was_seen );
       //add an entry to the user's pending payments
