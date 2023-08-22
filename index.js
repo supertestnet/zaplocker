@@ -1555,8 +1555,8 @@ const requestListener = async function( request, response ) {
         "maxSendable":9007199254740991,
         "metadata":`[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`,
         "tag":"payRequest",
-        // "nostrPubkey":"00009483d5e84e8850e5430654e61802fd2838cdf0ffa8fe774b4e9a63f52428",
-        // "allowsNostr":true
+        "nostrPubkey":pubKey,
+        "allowsNostr":true
       }
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
     }
