@@ -8,6 +8,7 @@
         <script src="https://bundle.run/noble-secp256k1@1.2.14"></script>
         <script src="https://bundle.run/varuint-bitcoin@1.1.2"></script>
         <script src="https://bundle.run/base58check@2.0.0"></script>
+        <script src="https://unpkg.com/@cmdcode/tapscript"></script>
         <script src="https://bundle.run/bech32@2.0.0"></script>
         <script src="https://bundle.run/buffer@6.0.3"></script>
         <script>var Buffer = buffer.Buffer;</script>
@@ -781,10 +782,9 @@
             }
             function isValidAddress( address ) {
                 try{
-                    return ( typeof( bitcoinjs.address.toOutputScript( address ) ) == "object" );
-                } catch( e ) {
-                    return;
-                }
+                    return !!tapscript.Address.decode( address ).script;
+                } catch( e ) {return;}
+                return;
             }
         </script>
     </head>
