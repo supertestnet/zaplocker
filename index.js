@@ -131,6 +131,73 @@ async function getBlockheight( network ) {
   return Number( data );
 }
 
+var nostrTagIsValid = async ( event, amount ) => {
+  if ( !isValidJson( event ) ) return;
+  event = JSON.parse( event );
+  if ( !( 'pubkey' in event ) || !( 'created_at' in event ) || !( 'kind' in event ) || !( 'tags' in event ) || !( 'content' in event ) ) {
+      return;
+  }
+  //validate sig
+  var serial_event = JSON.stringify([
+    0,
+    event['pubkey'],
+    event['created_at'],
+    event['kind'],
+    event['tags'],
+    event['content']
+  ]);
+  var id = sha256( serial_event );
+  var sig = event.sig;
+  var pubkey = event.pubkey;
+  var sig_is_valid = await nobleSecp256k1.schnorr.verify( sig, id, pubkey );
+  if ( !sig_is_valid ) return;
+  //ensure there is a p tag
+  var p_tag_exists = false;
+  var multiple_p_tags_exist = false;
+  var amount_tag_exists = false;
+  var amount_tag_value = null;
+  var a_tag_exists = false;
+  var a_tag_value = null;
+  event.tags.forEach( tag => {
+    if ( typeof tag != "object" || !tag[ 0 ] ) return true;
+    if ( tag[ 0 ] === "p" ) {
+      if ( p_tag_exists ) multiple_p_tags_exist = true;
+      p_tag_exists = true;
+    }
+    if ( tag[ 0 ] === "a" && tag[ 1 ] ) {
+      a_tag_exists = true;
+      a_tag_value = tag[ 1 ];
+    }
+    if ( tag[ 0 ] === "amount" && tag[ 1 ] ) {
+      amount_tag_exists = true;
+      amount_tag_value = tag[ 1 ];
+    }
+  });
+  if ( !p_tag_exists || multiple_p_tags_exist ) return;
+  //if amount tag exists, ensure it matches amount parameter
+  var amount_tag_matches = true;
+  if ( amount_tag_exists ) amount_tag_matches = ( amount_tag_value == amount );
+  if ( !amount_tag_matches ) return;
+  //if an a tag exists, ensure it is a valid nip-33 event coordinate
+  var a_tag_is_valid = true;
+  a_tag_exists = true;
+  a_tag_value = "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd";
+  if ( a_tag_exists ) {
+    var a_array = a_tag_value.split( ":" );
+    if ( a_array.length != 3 ) a_tag_is_valid = false;
+    a_array.every( item => {
+      if ( typeof item != "string" ) {
+        a_tag_is_valid = false;
+        return;
+      }
+      return true;
+    });
+    if ( isNaN( a_array[ 0 ] ) ) a_tag_is_valid = false;
+    if ( !isValidHex( a_array[ 1 ] ) || a_array[ 1 ].length != 64 ) a_tag_is_valid = false;
+  }
+  if ( a_tag_is_valid ) return true;
+}
+
 function generateHtlc(serverPubkey, userPubkey, pmthash, timelock) {
   return bitcoinjs.script.fromASM(
     `
