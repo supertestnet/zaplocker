@@ -1297,6 +1297,16 @@ function getinvoicepmthash( invoice ) {
     return pmthash;
 }
 
+function getinvoicedeschash( invoice ) {
+    var decoded = bolt11.decode( invoice );
+    var i; for ( i=0; i<decoded[ "tags" ].length; i++ ) {
+        if ( decoded[ "tags" ][ i ][ "tagName" ] == "purpose_commit_hash" ) {
+            var deschash = decoded[ "tags" ][ i ][ "data" ].toString();
+        }
+    }
+    return deschash;
+}
+
 function isValidHex( h ) {
   if ( !h ) return;
   var length = h.length;
@@ -1637,7 +1647,37 @@ const requestListener = async function( request, response ) {
       users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey});
       var texttowrite = JSON.stringify( users );
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
-      //todo: use nostr to give a zap receipt if the payment was a zap
+      //use nostr to give a zap receipt if the payment was a zap
+      if ( !nostr_tag_exists_and_is_valid ) return;
+      var relays_to_submit_to = ["wss://relay.damus.io"];
+      var my_p_tag = null;
+      var my_e_tag = null;
+      var bolt_11_tag = ["bolt11", swap_invoice];
+      var desc_tag = ["desc", desc];
+      var real_hash = sha256( desc );
+      var hash_to_match = getinvoicedeschash( invoice );
+      console.log( "oh no, the hashes didn't match!", real_hash, hash_to_match );
+      var tags = [my_p_tag];
+      if ( my_e_tag ) tags.push( my_e_tag );
+      tags.push( bolt_11_tag, desc_tag );
+      nostr_event.tags.forEach( tag => {
+        if ( tag[ 0 ] == "p" ) my_p_tag = tag;
+        if ( tag[ 0 ] == "e" ) my_e_tag = tag;
+        if ( tag[ 0 ] == "relays" && tag[ 1 ] && typeof tag[ 1 ] == "string" ) {
+            relays_to_submit_to = tag[ 1 ].split( "," );
+        }
+      });
+      var event = {
+        "content": "",
+        "created_at": Math.floor( Date.now() / 1000 ),
+        "kind": 9735,
+        "tags": tags,
+        "pubkey": pubKey
+      }
+      var signed_event = await getSignedEvent( event, privKey );
+      var i; for ( i=0; i<relays_to_submit_to.length; i++ ) {
+        await eventWasReplayedTilSeen( signed_event, relays_to_submit_to[ i ] );
+      }
     }
   } else if ( request.method === 'POST' ) {
     collectData(request, async ( formattedData ) => {
