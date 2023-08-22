@@ -1551,11 +1551,6 @@ const requestListener = async function( request, response ) {
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
     }
     if ( parts.path.startsWith( "/lnurlp/pay/" ) ) {
-      var nostr_tag_exists_and_is_valid = false;
-      var nostr_event = null;
-      if ( $_GET[ "nostr" ] ) {
-        nostr_tag_exists_and_is_valid = await nostrTagIsValid( $_GET[ "nostr" ], $_GET[ "amount" ] );
-      }
       var json = {"status": "ERROR", "reason": "invalid amount"}
       var feerate = await getMinFeeRate( "" );
       if ( fee_type === 'absolute' ) {
@@ -1566,6 +1561,11 @@ const requestListener = async function( request, response ) {
       if ( !$_GET || !$_GET[ "amount" ] || isNaN( $_GET[ "amount" ] ) || !parts.path.includes( "?amount=" ) || Math.round( Number( $_GET[ "amount" ] ) / 1000 ) < min ) {
         sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json'} );
         return;
+      }
+      var nostr_tag_exists_and_is_valid = false;
+      var nostr_event = null;
+      if ( $_GET[ "nostr" ] ) {
+        nostr_tag_exists_and_is_valid = await nostrTagIsValid( $_GET[ "nostr" ], $_GET[ "amount" ] );
       }
       var amount = Math.round( Number( $_GET[ "amount" ] ) / 1000 );
       console.log( amount, min, amount < min )
