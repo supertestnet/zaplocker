@@ -1551,6 +1551,11 @@ const requestListener = async function( request, response ) {
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
     }
     if ( parts.path.startsWith( "/lnurlp/pay/" ) ) {
+      var nostr_tag_exists_and_is_valid = false;
+      var nostr_event = null;
+      if ( $_GET[ "nostr" ] ) {
+        nostr_tag_exists_and_is_valid = await nostrTagIsValid( $_GET[ "nostr" ], $_GET[ "amount" ] );
+      }
       var json = {"status": "ERROR", "reason": "invalid amount"}
       var feerate = await getMinFeeRate( "" );
       if ( fee_type === 'absolute' ) {
@@ -1587,6 +1592,10 @@ const requestListener = async function( request, response ) {
         return true;
       });
       var desc = `[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`;
+      if ( nostr_tag_exists_and_is_valid ) {
+        desc = $_GET[ "nostr" ];
+        nostr_event = $_GET[ "nostr" ];
+      }
       var desc_hash = sha256( desc );
       var pmthash = users[ user_pubkey ][ "this_users_hashes" ][ index_of_first_unused_pmthash ][ 0 ];
       console.log( amount );
