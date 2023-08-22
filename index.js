@@ -96,7 +96,7 @@ async function getMinFeeRate( network ) {
 }
 
 var destroyOldPendings = async () => {
-  var current_blockheight = await getBlockheight( "testnet/" );
+  var current_blockheight = await getBlockheight( "" );
   Object.keys( users ).forEach( async user => {
     var i; for ( i=0; i<users[ user ][ "pending" ].length; i++ ) {
       var pending = users[ user ][ "pending" ][ i ];
@@ -127,7 +127,7 @@ var destroyOldPendings = async () => {
 }
 
 async function getBlockheight( network ) {
-  var data = await getData( "https://blockstream.info/" + network + "api/blocks/tip/height" );
+  var data = await getData( "https://mempool.space/" + network + "api/blocks/tip/height" );
   return Number( data );
 }
 
@@ -389,8 +389,8 @@ var eventWasReplayedTilSeen = async ( event, the_relay, num ) => {
 }
 
 function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddress, toamount, sequence_number ) {
-    var keyPairSender = ECPair.fromPrivateKey( Buffer.from( senderPrivkey, 'hex' ), bitcoinjs.networks.testnet );
-    var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.testnet })
+    var keyPairSender = ECPair.fromPrivateKey( Buffer.from( senderPrivkey, 'hex' ), bitcoinjs.networks.mainnet );
+    var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.mainnet })
     .addInput({
         hash: inputtxid,
         index: inputindex,
@@ -432,7 +432,7 @@ function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddres
 
 function getSwapAddress( serverPubkey, userPubkey, pmthash, timelock ) {
     var witnessscript = generateHtlc( serverPubkey, userPubkey, pmthash, timelock );
-    var p2wsh = bitcoinjs.payments.p2wsh({redeem: {output: witnessscript, network: bitcoinjs.networks.testnet}, network: bitcoinjs.networks.testnet });
+    var p2wsh = bitcoinjs.payments.p2wsh({redeem: {output: witnessscript, network: bitcoinjs.networks.mainnet}, network: bitcoinjs.networks.mainnet });
     return p2wsh.address;
 }
 
@@ -460,7 +460,7 @@ async function estimateExpiry( pmthash ) {
     var invoice_creation_timestamp = await getInvoiceCreationTimestamp( pmthash );
     invoice_creation_timestamp = Number( invoice_creation_timestamp );
     var current_unix_timestamp = Number( Math.floor( Date.now() / 1000 ) );
-    var current_blockheight = await getBlockheight( "testnet/" );
+    var current_blockheight = await getBlockheight( "" );
     current_blockheight = Number( current_blockheight );
     //then subtract X units of 600 seconds from the current timestamp til it is less than the invoice creation timestmap,
     var units_of_600 = 0;
@@ -627,7 +627,7 @@ async function settleHoldInvoice( preimage ) {
 async function howManyConfs( txid, network ) {
     var blockheight = await getBlockheight( network );
     return new Promise( async function( resolve, reject ) {
-        var json = await getData( `https://blockstream.info/testnet/api/tx/` + txid );
+        var json = await getData( `https://blockstream.info/api/tx/` + txid );
         if ( json[ "status" ][ "confirmed" ] ) {
             resolve( ( Number( blockheight ) - Number( json[ "status" ][ "block_height" ] ) ) + 1 );
         } else {
@@ -679,7 +679,7 @@ async function getAddress() {
 }
 
 async function addressOnceSentMoney( address ) {
-    var json = await getData( "https://blockstream.info/testnet/api/address/" + address );
+    var json = await getData( "https://blockstream.info/api/address/" + address );
     if ( json[ "chain_stats" ][ "spent_txo_count" ] > 0 || json[ "mempool_stats" ][ "spent_txo_count" ] > 0 ) {
         return true;
     }
@@ -704,13 +704,13 @@ async function loopTilAddressSendsMoney( address, recovery_info ) {
             if ( !data_i_seek ) {
                 setTimeout( async function() {
                     //check how many confs the deposit tx has
-                    var confs = await howManyConfs( txid, "testnet/" );
+                    var confs = await howManyConfs( txid, "" );
                     console.log( confs );
                     if ( Number( confs ) > 11 ) {
                         console.log( "time to sweep!" );
                         //sweep the deposit into the recovery address
                         var recovery_tx = recoverSats( privkey, txid, vout, amount, recovery_address, amount - 500, 40 );
-                        await pushBTCpmt( recovery_tx, "testnet/" );
+                        await pushBTCpmt( recovery_tx, "" );
                         resolve( "recovered" );
                     }
                     console.log( "checking for preimage in mempool..." );
@@ -733,7 +733,7 @@ async function loopTilAddressSendsMoney( address, recovery_info ) {
 
 async function addressSentMoneyInThisTx( address, txid_of_deposit ) {
     var txid;
-    var json = await getData( "https://blockstream.info/testnet/api/address/" + address + "/txs" );
+    var json = await getData( "https://blockstream.info/api/address/" + address + "/txs" );
     json.forEach( function( tx ) {
         tx[ "vin" ].forEach( function( input ) {
             if ( input[ "txid" ] == txid_of_deposit ) {
@@ -747,7 +747,7 @@ async function addressSentMoneyInThisTx( address, txid_of_deposit ) {
 }
 
 async function getPreimageFromTransactionThatSpendsAnHTLC( txid, pmthash ) {
-    var json = await getData( "https://blockstream.info/testnet/api/tx/" + txid );
+    var json = await getData( "https://blockstream.info/api/tx/" + txid );
     var i; for ( i=0; i<json[ "vin" ].length; i++ ) {
         var j; for ( j=0; j<json[ "vin" ][ i ][ "witness" ].length; j++ ) {
             if ( bitcoinjs.crypto.sha256( Buffer.from( json[ "vin" ][ i ][ "witness" ][ j ], "hex" ) ).toString( "hex" ) == pmthash ) {
@@ -785,7 +785,7 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     }
     var amount_i_will_receive = await getInvoiceAmount( users_pmthash );
     var amount_i_am_asked_to_pay = get_amount_i_am_asked_to_pay( invoice );
-    var feerate = await getMinFeeRate( "testnet/" );
+    var feerate = await getMinFeeRate( "" );
     if ( fee_type === 'absolute' ) {
       var post_fee_amount = Number( amount_i_will_receive ) + fee;
     } else {
@@ -801,7 +801,7 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     var invoice_creation_timestamp = await getInvoiceCreationTimestamp( users_pmthash );
     invoice_creation_timestamp = Number( invoice_creation_timestamp );
     var current_unix_timestamp = Number( Math.floor( Date.now() / 1000 ) );
-    var current_blockheight = await getBlockheight( "testnet/" );
+    var current_blockheight = await getBlockheight( "" );
     current_blockheight = Number( current_blockheight );
     //then subtract X units of 600 seconds from the current timestamp til it is less than the invoice creation timestmap,
     var blocks_til_expiry = await getInvoiceHardExpiry( users_pmthash );
@@ -900,7 +900,7 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
     var invoice_creation_timestamp = await getInvoiceCreationTimestamp( users_pmthash );
     invoice_creation_timestamp = Number( invoice_creation_timestamp );
     var current_unix_timestamp = Number( Math.floor( Date.now() / 1000 ) );
-    var current_blockheight = await getBlockheight( "testnet/" );
+    var current_blockheight = await getBlockheight( "" );
     current_blockheight = Number( current_blockheight );
     //then subtract X units of 600 seconds from the current timestamp til it is less than the invoice creation timestamp,
     var units_of_600 = 0;
@@ -919,7 +919,7 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
     var expiry_of_invoice_that_pays_me = await getInvoiceHardExpiry( users_pmthash );
     var adminmacaroon = adminmac;
     var endpoint = lndendpoint;
-    var feerate = await getMinFeeRate( "testnet/" );
+    var feerate = await getMinFeeRate( "" );
     if ( fee_type === 'absolute' ) {
       var post_fee_amount = Number( amount ) + fee;
     } else {
@@ -969,7 +969,7 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
     //how many confs the deposit tx has, and, if it has more than 40, sweeps the money to the address
     //obtained from lnd
     await waitSomeSeconds( 30 );
-    var vout = await getVout( txid_of_deposit, htlc_address, Number( amount ), "testnet/" );
+    var vout = await getVout( txid_of_deposit, htlc_address, Number( amount ), "" );
     console.log( "vout:", vout );
     var recovery_address = await getAddress();
     var recovery_info = [permakey, txid_of_deposit, vout, Number( amount ), 40, recovery_address];
@@ -1401,7 +1401,7 @@ const requestListener = async function( request, response ) {
       users[ pmt[ "user_pubkey" ] ][ "pending" ][ idx ].status = "swap_in_progress";
       var texttowrite = JSON.stringify( users );
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
-      var current_blockheight = await getBlockheight( "testnet/" );
+      var current_blockheight = await getBlockheight( "" );
       var timelock = current_blockheight + 10;
       var witness_script = generateHtlc(
         pmt[ "serverPubkey" ],
@@ -1412,9 +1412,9 @@ const requestListener = async function( request, response ) {
       var htlcObject = bitcoinjs.payments.p2wsh({
         redeem: {
           output: witness_script,
-          network: bitcoinjs.networks.testnet,
+          network: bitcoinjs.networks.mainnet,
         },
-        network: bitcoinjs.networks.testnet,
+        network: bitcoinjs.networks.mainnet,
       });
       if ( htlcObject.address != $_GET[ "htlc_address" ] ) {
         sendResponse( response, 'error: invalid swap details', 200, {'Content-Type': 'text/plain'} );
@@ -1463,17 +1463,17 @@ const requestListener = async function( request, response ) {
         return true;
       });
       if ( !username || username.includes( "/" ) || !name_exists ) {
-        sendResponse( response, 'error: username unknown', 200, {'Content-Type': 'text/plain'} );
+        sendResponse( response, `error: this username is unknown: ${username}`, 200, {'Content-Type': 'text/plain'} );
         return;
       }
-      var feerate = await getMinFeeRate( "testnet/" );
+      var feerate = await getMinFeeRate( "" );
       if ( fee_type === 'absolute' ) {
         var min = Math.floor( 546 + fee + ( ( feerate * 200 ) * 2 ) );
       } else {
         var min = Math.floor( ( 546 + ( ( feerate * 200 ) * 2 ) ) / ( 1 - ( fee / 100 ) ) );
       }
       var json = {
-        "callback":`${parts.protocol + "//" + parts.hostname}/lnurlp/pay/${username}`,
+        "callback":`${"https://" + parts.hostname}/lnurlp/pay/${username}`,
         "minSendable":min * 1000,
         "maxSendable":9007199254740991,
         "metadata":`[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@somesite.com\"]]`,
@@ -1485,7 +1485,7 @@ const requestListener = async function( request, response ) {
     }
     if ( parts.path.startsWith( "/lnurlp/pay/" ) ) {
       var json = {"status": "ERROR", "reason": "invalid amount"}
-      var feerate = await getMinFeeRate( "testnet/" );
+      var feerate = await getMinFeeRate( "" );
       if ( fee_type === 'absolute' ) {
         var min = Math.floor( 546 + fee + ( ( feerate * 200 ) * 2 ) );
       } else {
@@ -1556,7 +1556,7 @@ const requestListener = async function( request, response ) {
       }
       post_fee_amount = Number( post_fee_amount.toFixed( 0 ) );
       var swap_fee = post_fee_amount - amount;
-      var current_blockheight = await getBlockheight( "testnet/" );
+      var current_blockheight = await getBlockheight( "" );
       expires = Number( expires ) + Number( current_blockheight );
       users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey});
       var texttowrite = JSON.stringify( users );
