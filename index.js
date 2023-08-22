@@ -1439,7 +1439,7 @@ const requestListener = async function( request, response ) {
       username = username.toLowerCase();
       var name_exists = false;
       Object.keys( users ).every( user => {
-        if ( users[ user ][ "username" ] == $_GET[ "username" ] ) {
+        if ( users[ user ][ "username" ] == username ) {
           name_exists = true;
           return;
         }
