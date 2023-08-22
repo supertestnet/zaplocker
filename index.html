@@ -304,7 +304,7 @@
                 };
                 xhttp.open(
                   "GET",
-                  "https://mempool.space/testnet/api/address/" + address,
+                  "https://mempool.space/api/address/" + address,
                   true
                 );
                 xhttp.send();
@@ -337,7 +337,7 @@
               let txid;
               let vout;
               let amt;
-              let nonjson = await getData("https://mempool.space/testnet/api/address/" + address + "/txs");
+              let nonjson = await getData("https://mempool.space/api/address/" + address + "/txs");
               let json = JSON.parse(nonjson);
               json.forEach(function (tx) {
                 tx["vout"].forEach(function (output, index) {
@@ -375,7 +375,7 @@
                 var outputscript =
                   "00" + bitcoinjs.crypto.sha256(witnessscript).toString("hex");
                 //  var useraddress = "tb1ql7w62elx9ucw4pj5lgw4l028hmuw80sndtntxt";
-                var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.testnet });
+                var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.mainnet });
                 //  psbt.setLocktime( timelock );
                 psbt.addInput({
                   hash: txid,
@@ -412,14 +412,14 @@
                   // Step 2: Create final scripts
                   var witnessStackClaimBranch = bitcoinjs.payments.p2wsh({
                     redeem: {
-                      network: bitcoinjs.networks.testnet,
+                      network: bitcoinjs.networks.mainnet,
                       output: script,
                       input: bitcoinjs.script.compile([
                         input.partialSig[0].signature,
                         Buffer.from(preimage, "hex"),
                       ]),
                     },
-                    network: bitcoinjs.networks.testnet,
+                    network: bitcoinjs.networks.mainnet,
                   });
                   console.log("First branch witness stack:");
                   console.log(
@@ -435,7 +435,7 @@
                 return psbt.extractTransaction().toHex();
             }
             async function getMinFeeRate() {
-                var fees = await getData( "https://mempool.space/testnet/api/v1/fees/recommended" );
+                var fees = await getData( "https://mempool.space/api/v1/fees/recommended" );
                 fees = JSON.parse( fees );
                 if ( !( "hourFee" in fees ) ) return "error -- site down";
                 var minfee = fees[ "hourFee" ];
@@ -464,7 +464,7 @@
                 return buffer2;
             }
             async function pushBTCpmt(rawtx) {
-                var txid = await postData( "https://mempool.space/testnet/api/tx", rawtx );
+                var txid = await postData( "https://mempool.space/api/tx", rawtx );
                 return txid;
             }
             async function getNote( item ) {
@@ -512,7 +512,7 @@
                     }
                     pending_pmt[ "preimage" ] = matching_preimage;
                     user_data[ "pending" ][ index ] = pending_pmt;
-                    var current_blockheight = await getBlockheight( "testnet/" );
+                    var current_blockheight = await getBlockheight( "" );
                     console.log( "blockheight:", current_blockheight );
                     var blocks_til_expiry = pending_pmt[ "expires" ] - current_blockheight;
                     var feerate = await getMinFeeRate();
@@ -540,11 +540,11 @@
                         $( '.loaded_pending' ).append( div1 );
                         $$( '.settle_bl' ).forEach( button => {
                             button.onclick = async b => {
-                                var useraddress = prompt( "Please enter a testnet bitcoin address where you want your money to go" );
+                                var useraddress = prompt( "Please enter a bitcoin address where you want your money to go" );
                                 if ( !isValidAddress( useraddress ) ) return alert( "Please try again with a valid bitcoin address" );
                                 var swap_privkey = bytesToHex( nobleSecp256k1.utils.randomBytes() );
                                 var swap_pubkey = nobleSecp256k1.getPublicKey( swap_privkey, true );
-                                var current_blockheight = await getBlockheight( "testnet/" );
+                                var current_blockheight = await getBlockheight( "" );
                                 console.log( "blockheight:", current_blockheight );
                                 var preimage = b.target.getAttribute( "data-preimage" );
                                 var pmthash = bytesToHex( sha256( hexToBytes( preimage ) ) );
@@ -559,9 +559,9 @@
                                 var htlcObject = bitcoinjs.payments.p2wsh({
                                     redeem: {
                                         output: witness_script,
-                                        network: bitcoinjs.networks.testnet,
+                                        network: bitcoinjs.networks.mainnet,
                                     },
-                                    network: bitcoinjs.networks.testnet,
+                                    network: bitcoinjs.networks.mainnet,
                                 });
                                 //send the swap address to the server along with
                                 //your swap pubkey and the payment hash. Then have
@@ -603,11 +603,11 @@
                                 );
                                 console.log( tx_hex );
                                 sessionStorage.removeItem( "modal_cleared" );
-                                showModal( `You're almost done! Just X out of this popup when the following transaction has 1 confirmation: <a href="https://mempool.space/testnet/tx/${txid}" target="_blank">https://mempool.space/testnet/tx/${txid}</a>`, true );
+                                showModal( `You're almost done! Just X out of this popup when the following transaction has 1 confirmation: <a href="https://mempool.space/tx/${txid}" target="_blank">https://mempool.space/tx/${txid}</a>`, true );
                                 await getNote( "modal_cleared" );
                                 var sweep_txid = await pushBTCpmt(tx_hex);
                                 sessionStorage.removeItem( "modal_cleared" );
-                                showModal( `Your transaction was a success! Here is your txid: <a href="https://mempool.space/testnet/tx/${sweep_txid}" target="_blank">https://mempool.space/testnet/tx/${sweep_txid}</a>`, true );
+                                showModal( `Your transaction was a success! Here is your txid: <a href="https://mempool.space/tx/${sweep_txid}" target="_blank">https://mempool.space/tx/${sweep_txid}</a>`, true );
                                 await getNote( "modal_cleared" );
                                 window.location.reload();
                             }
