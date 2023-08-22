@@ -1567,7 +1567,10 @@ const requestListener = async function( request, response ) {
     collectData(request, async ( formattedData ) => {
       if ( parts.path.startsWith( "/set_user" ) ) {
         var is_valid_json = isValidJson( formattedData );
-        if ( !is_valid_json ) sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+        if ( !is_valid_json ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
         var json = JSON.parse( formattedData );
         if ( Object.keys( json ).length != 6 ) {
           sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
