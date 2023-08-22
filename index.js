@@ -1435,6 +1435,8 @@ const requestListener = async function( request, response ) {
         sendResponse( response, 'error: no username', 200, {'Content-Type': 'text/plain'} );
         return;
       }
+      var username = $_GET[ "username" ];
+      username = username.toLowerCase();
       var name_exists = false;
       Object.keys( users ).every( user => {
         if ( users[ user ][ "username" ] == $_GET[ "username" ] ) {
