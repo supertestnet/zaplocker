@@ -1519,7 +1519,7 @@ const requestListener = async function( request, response ) {
         }
         return true;
       });
-      var desc = `[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@somesite.com\"]]`;
+      var desc = `[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`;
       var desc_hash = sha256( desc );
       var pmthash = users[ user_pubkey ][ "this_users_hashes" ][ index_of_first_unused_pmthash ][ 0 ];
       console.log( amount );
