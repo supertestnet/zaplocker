@@ -1116,7 +1116,7 @@ async function checkInvoiceStatus( hash ) {
                           setTimeout( async function() {
                                   time = time + 1;
                                   console.log( "time:", time )
-                                  if ( time == 1000 || time > 1000 ) {
+                                  if ( time == 36000 || time > 36000 ) {
                                     resolve( "failure" );
                                     return;
                                   }
