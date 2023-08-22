@@ -1451,6 +1451,7 @@ const requestListener = async function( request, response ) {
     }
     if ( parts.path.startsWith( "/.well-known/lnurlp/" ) ) {
       var username = parts.path.substring( parts.path.indexOf( "/.well-known/lnurlp/" ) + 20 );
+      username = username.toLowerCase();
       var name_exists = false;
       Object.keys( users ).every( user => {
         if ( users[ user ][ "username" ] == username ) {
