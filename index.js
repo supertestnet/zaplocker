@@ -1555,7 +1555,7 @@ const requestListener = async function( request, response ) {
         "maxSendable":9007199254740991,
         "metadata":`[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`,
         "tag":"payRequest",
-        "nostrPubkey":pubKey,
+        "nostrPubkey":pubKeyMinus2,
         "allowsNostr":true
       }
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
@@ -1672,7 +1672,7 @@ const requestListener = async function( request, response ) {
         "created_at": Math.floor( Date.now() / 1000 ),
         "kind": 9735,
         "tags": tags,
-        "pubkey": pubKey
+        "pubkey": pubKeyMinus2
       }
       var signed_event = await getSignedEvent( event, privKey );
       var i; for ( i=0; i<relays_to_submit_to.length; i++ ) {
