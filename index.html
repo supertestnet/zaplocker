@@ -149,7 +149,7 @@
                     .join( "" );
             }
             var username_is_good = async name => {
-                var username_is_good = await getData( `http://localhost:8081/test_username/?username=${name}` );
+                var username_is_good = await getData( `${window.location.protocol + "//" + window.location.hostname}/test_username/?username=${name}` );
                 username_is_good = username_is_good.includes( "error" ) ? false : true;
                 return username_is_good;
             }
@@ -826,7 +826,7 @@
                     var html = `
                         <p>Please choose a username for your lightning address</p>
                         <p style="display: flex; align-items: center">
-                            <input class="desired_username"> <span>&nbsp;@&nbsp;thissite.com</span>
+                            <input class="desired_username"> <span>&nbsp;@&nbsp;${window.location.hostname}</span>
                         </p>
                         <input class="user_pubkey hidden">
                         <p>And a nostr relay where we can notify you when you get zapped</p>
@@ -892,7 +892,7 @@
                         }
                         var ciphertext = await window.nostr.nip04.encrypt( user_pubkey, preimages );
                         var json = {username, user_pubkey, relay, hashes, ciphertext, sigs}
-                        var data = await postData( "http://localhost:8081/set_user/", JSON.stringify( json ) );
+                        var data = await postData( `${window.location.protocol + "//" + window.location.hostname}/set_user/`, JSON.stringify( json ) );
                         if ( data == "user created" ) {
                             var port = "";
                             if ( window.location.port ) port = `:${window.location.port}`;
