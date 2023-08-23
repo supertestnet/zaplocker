@@ -131,73 +131,6 @@ async function getBlockheight( network ) {
   return Number( data );
 }
 
-var nostrTagIsValid = async ( event, amount ) => {
-  if ( !isValidJson( event ) ) return;
-  event = JSON.parse( event );
-  if ( !( 'pubkey' in event ) || !( 'created_at' in event ) || !( 'kind' in event ) || !( 'tags' in event ) || !( 'content' in event ) ) {
-      return;
-  }
-  //validate sig
-  var serial_event = JSON.stringify([
-    0,
-    event['pubkey'],
-    event['created_at'],
-    event['kind'],
-    event['tags'],
-    event['content']
-  ]);
-  var id = sha256( serial_event );
-  var sig = event.sig;
-  var pubkey = event.pubkey;
-  var sig_is_valid = await nobleSecp256k1.schnorr.verify( sig, id, pubkey );
-  if ( !sig_is_valid ) return;
-  //ensure there is a p tag
-  var p_tag_exists = false;
-  var multiple_p_tags_exist = false;
-  var amount_tag_exists = false;
-  var amount_tag_value = null;
-  var a_tag_exists = false;
-  var a_tag_value = null;
-  event.tags.forEach( tag => {
-    if ( typeof tag != "object" || !tag[ 0 ] ) return true;
-    if ( tag[ 0 ] === "p" ) {
-      if ( p_tag_exists ) multiple_p_tags_exist = true;
-      p_tag_exists = true;
-    }
-    if ( tag[ 0 ] === "a" && tag[ 1 ] ) {
-      a_tag_exists = true;
-      a_tag_value = tag[ 1 ];
-    }
-    if ( tag[ 0 ] === "amount" && tag[ 1 ] ) {
-      amount_tag_exists = true;
-      amount_tag_value = tag[ 1 ];
-    }
-  });
-  if ( !p_tag_exists || multiple_p_tags_exist ) return;
-  //if amount tag exists, ensure it matches amount parameter
-  var amount_tag_matches = true;
-  if ( amount_tag_exists ) amount_tag_matches = ( amount_tag_value == amount );
-  if ( !amount_tag_matches ) return;
-  //if an a tag exists, ensure it is a valid nip-33 event coordinate
-  var a_tag_is_valid = true;
-  a_tag_exists = true;
-  a_tag_value = "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd";
-  if ( a_tag_exists ) {
-    var a_array = a_tag_value.split( ":" );
-    if ( a_array.length != 3 ) a_tag_is_valid = false;
-    a_array.every( item => {
-      if ( typeof item != "string" ) {
-        a_tag_is_valid = false;
-        return;
-      }
-      return true;
-    });
-    if ( isNaN( a_array[ 0 ] ) ) a_tag_is_valid = false;
-    if ( !isValidHex( a_array[ 1 ] ) || a_array[ 1 ].length != 64 ) a_tag_is_valid = false;
-  }
-  if ( a_tag_is_valid ) return true;
-}
-
 function generateHtlc(serverPubkey, userPubkey, pmthash, timelock) {
   return bitcoinjs.script.fromASM(
     `
@@ -365,8 +298,10 @@ async function getSignedEvent( event, privateKey ) {
         event['tags'],
         event['content']
     ]);
+    console.log( "event data:", eventData );
     event.id = await alt_sha256( eventData );
     event.sig = await nobleSecp256k1.schnorr.sign( event.id, privateKey );
+    console.log( "event:", JSON.stringify( event ) );
     return event;
 }
 
@@ -1368,6 +1303,7 @@ if ( fs.existsSync( "privkey.txt" ) ) {
 
 var allowed_routes = [
   "/test_username",
+  "/test_nostr",
   "/test_pubkey",
   "/set_user",
   "/.well-known/lnurlp/",
@@ -1400,6 +1336,73 @@ var collectData = ( request, callback ) => {
   });
 };
 
+var nostrTagIsValid = async ( event, amount ) => {
+            if ( !isValidJson( event ) ) return;
+            event = JSON.parse( event );
+            if ( !( 'pubkey' in event ) || !( 'created_at' in event ) || !( 'kind' in event ) || !( 'tags' in event ) || !( 'content' in event ) ) {
+                return;
+            }
+            //validate sig
+            var serial_event = JSON.stringify([
+                0,
+                event['pubkey'],
+                event['created_at'],
+                event['kind'],
+                event['tags'],
+                event['content']
+            ]);
+            var id = sha256( serial_event );
+            var sig = event.sig;
+            var pubkey = event.pubkey;
+            var sig_is_valid = await nobleSecp256k1.schnorr.verify( sig, id, pubkey );
+            if ( !sig_is_valid ) return;
+            //ensure there is a p tag
+            var p_tag_exists = false;
+            var multiple_p_tags_exist = false;
+            var amount_tag_exists = false;
+            var amount_tag_value = null;
+            var a_tag_exists = false;
+            var a_tag_value = null;
+            event.tags.forEach( tag => {
+              if ( typeof tag != "object" || !tag[ 0 ] ) return true;
+              if ( tag[ 0 ] === "p" ) {
+                if ( p_tag_exists ) multiple_p_tags_exist = true;
+                p_tag_exists = true;
+              }
+              if ( tag[ 0 ] === "a" && tag[ 1 ] ) {
+                a_tag_exists = true;
+                a_tag_value = tag[ 1 ];
+              }
+              if ( tag[ 0 ] === "amount" && tag[ 1 ] ) {
+                amount_tag_exists = true;
+                amount_tag_value = tag[ 1 ];
+              }
+            });
+            if ( !p_tag_exists || multiple_p_tags_exist ) return;
+            //if amount tag exists, ensure it matches amount parameter
+            var amount_tag_matches = true;
+            if ( amount_tag_exists ) amount_tag_matches = ( amount_tag_value == amount );
+            if ( !amount_tag_matches ) return;
+            //if an a tag exists, ensure it is a valid nip-33 event coordinate
+            var a_tag_is_valid = true;
+            a_tag_exists = true;
+            a_tag_value = "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd";
+            if ( a_tag_exists ) {
+                var a_array = a_tag_value.split( ":" );
+                if ( a_array.length != 3 ) a_tag_is_valid = false;
+                a_array.every( item => {
+                    if ( typeof item != "string" ) {
+                        a_tag_is_valid = false;
+                        return;
+                    }
+                    return true;
+                });
+                if ( isNaN( a_array[ 0 ] ) ) a_tag_is_valid = false;
+                if ( !isValidHex( a_array[ 1 ] ) || a_array[ 1 ].length != 64 ) a_tag_is_valid = false;
+            }
+            if ( a_tag_is_valid ) return true;
+}
+
 const requestListener = async function( request, response ) {
   destroyOldPendings();
   var protocol = request.connection.encrypted ? 'https': 'http';
@@ -1420,6 +1423,14 @@ const requestListener = async function( request, response ) {
     return;
   }
   if ( request.method === 'GET' ) {
+    if ( parts.path.startsWith( "/test_nostr" ) ) {
+        var tag_is_valid = false;
+        if ( $_GET[ "nostr" ] ) {
+            var nostr_tag_is_valid = await nostrTagIsValid( $_GET[ "nostr" ], $_GET[ "amount" ] );
+        }
+        sendResponse( response, String( nostr_tag_is_valid ), 200, {'Content-Type': 'text/plain'} );
+        return;
+    }
     if ( parts.path.startsWith( "/pay_invoice" ) ) {
       if ( !$_GET[ "invoice" ] || !isValidInvoice( $_GET[ "invoice" ] ) ) {
         sendResponse( response, 'error: invalid invoice', 200, {'Content-Type': 'text/plain'} );
@@ -1622,7 +1633,7 @@ const requestListener = async function( request, response ) {
       var desc = `[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`;
       if ( nostr_tag_exists_and_is_valid ) {
         desc = $_GET[ "nostr" ];
-        nostr_event = $_GET[ "nostr" ];
+        nostr_event = JSON.parse( $_GET[ "nostr" ] );
       }
       var desc_hash = sha256( desc );
       var pmthash = users[ user_pubkey ][ "this_users_hashes" ][ index_of_first_unused_pmthash ][ 0 ];
@@ -1662,22 +1673,19 @@ const requestListener = async function( request, response ) {
       var swap_fee = post_fee_amount - amount;
       var current_blockheight = await getBlockheight( "" );
       expires = Number( expires ) + Number( current_blockheight );
-      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey});
+      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey, nostr_event});
       var texttowrite = JSON.stringify( users );
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
-      //use nostr to give a zap receipt if the payment was a zap
       if ( !nostr_tag_exists_and_is_valid ) return;
+      //use nostr to give a zap receipt if the payment was a zap
       var relays_to_submit_to = ["wss://relay.damus.io"];
       var my_p_tag = null;
       var my_e_tag = null;
       var bolt_11_tag = ["bolt11", swap_invoice];
       var desc_tag = ["desc", desc];
       var real_hash = sha256( desc );
-      var hash_to_match = getinvoicedeschash( invoice );
+      var hash_to_match = getinvoicedeschash( swap_invoice );
       console.log( "oh no, the hashes didn't match!", real_hash, hash_to_match );
-      var tags = [my_p_tag];
-      if ( my_e_tag ) tags.push( my_e_tag );
-      tags.push( bolt_11_tag, desc_tag );
       nostr_event.tags.forEach( tag => {
         if ( tag[ 0 ] == "p" ) my_p_tag = tag;
         if ( tag[ 0 ] == "e" ) my_e_tag = tag;
@@ -1685,6 +1693,12 @@ const requestListener = async function( request, response ) {
             relays_to_submit_to = tag[ 1 ].split( "," );
         }
       });
+      var tags = [my_p_tag];
+      console.log( 1, tags );
+      if ( my_e_tag ) tags.push( my_e_tag );
+      console.log( 2, tags, my_e_tag );
+      tags.push( bolt_11_tag, desc_tag );
+      console.log( 3, tags, bolt_11_tag, desc_tag );
       var event = {
         "content": "",
         "created_at": Math.floor( Date.now() / 1000 ),
