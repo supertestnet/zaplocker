@@ -291,7 +291,7 @@ async function getNostrNote( id, relay ) {
     connected = true;
     connection.on( 'message', async function( event ) {
       var event = JSON.parse( event.utf8Data );
-      if ( event[ 2 ] && event[ 2 ].kind != 1 ) {
+      if ( event[ 2 ] && event[ 2 ].kind == 4 ) {
         var i; for ( i=0; i<event[ 2 ].tags.length; i++ ) {
           if ( event[ 2 ].tags[ i ] && event[ 2 ].tags[ i ][ 1 ] ) {
             var recipient = event[ 2 ].tags[ i ][ 1 ];
@@ -350,6 +350,24 @@ async function getNostrNote( id, relay ) {
   }
   var returnable = await getTimeoutData();
   return returnable;
+}
+
+function alt_sha256( string ) {
+    return crypto.createHash( "sha256" ).update( string ).digest( "hex" );
+}
+
+async function getSignedEvent( event, privateKey ) {
+    var eventData = JSON.stringify([
+        0,
+        event['pubkey'],
+        event['created_at'],
+        event['kind'],
+        event['tags'],
+        event['content']
+    ]);
+    event.id = await alt_sha256( eventData );
+    event.sig = await nobleSecp256k1.schnorr.sign( event.id, privateKey );
+    return event;
 }
 
 var makeEvent = async ( note, recipientpubkey ) => {
