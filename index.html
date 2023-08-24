@@ -542,6 +542,7 @@
                             button.onclick = async b => {
                                 var useraddress = prompt( "Please enter a bitcoin address where you want your money to go" );
                                 if ( !isValidAddress( useraddress ) ) return alert( "Please try again with a valid bitcoin address" );
+                                if ( useraddress.startsWith( "tb1p" ) ) return alert( "Please try again. That was a taproot address and taproot addresses are not supported yet." );
                                 var swap_privkey = bytesToHex( nobleSecp256k1.utils.randomBytes() );
                                 var swap_pubkey = nobleSecp256k1.getPublicKey( swap_privkey, true );
                                 var current_blockheight = await getBlockheight( "" );
