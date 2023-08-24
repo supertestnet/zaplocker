@@ -197,6 +197,12 @@ var getUserByUsername = name => {
   return key;
 }
 
+var capitalizeString = s => {
+    var f = s.charAt(0).toUpperCase();
+    var r = s.slice(1);
+    return f + r;
+}
+
 var getPaymentByHash = hash => {
   var pmt = "";
   var idx = "";
@@ -1655,6 +1661,16 @@ const requestListener = async function( request, response ) {
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
       var payment_is_pending = await paymentIsPending( swap_invoice, amount );
       //notify the recipient that it's time to settle their payment
+      var profile = {
+        "content"    : JSON.stringify({"name":`${capitalizeString( parts.hostname )}`,"about":"","picture":""}),
+        "created_at" : Math.floor( Date.now() / 1000 ),
+        "kind"       : 0,
+        "tags"       : [],
+        "pubkey"     : pubKey,
+      }
+      var signedProfile = await getSignedEvent(profile, privKey);
+      setNote( signedProfile, users[ user_pubkey ][ "relay" ] );
+      console.log( "made it", signedProfile );
       var event = await makeEvent( `This is your lightning address. You have a pending payment for ${amount} sats. Come to ${parts.hostname} to collect it, it will expire in 16 hours.`, user_pubkey );
       var was_seen = await eventWasReplayedTilSeen( event, users[ user_pubkey ][ "relay" ] );
       console.log( "the event was seen, right?", was_seen );
