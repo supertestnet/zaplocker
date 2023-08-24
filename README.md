@@ -30,7 +30,7 @@ To settle on the base layer, the user must say what bitcoin address they want th
 - Zaplocker is free and open source software. You can run it yourself to provide users of your service with a lightning address without taking custody of user funds. The zaplocker name as well as the software is fully released into the public domain, with no rights reserved. If you're a developer, go hog wild! Make it your own! Do it your way, with your own spin, on your own server!
 - Zaplocker supports zaps. If you add your zaplocker address to your nostr account, people can zap you on nostr-based social networks. Zaplocker sends out a zap receipt when a lightning payment goes into a pending state, and zappy apps can detect this receipt to show a green checkmark to their users -- without waiting for the recipient to come online and settle the payment.
 
-# Man in the middle
+# Fixing the man in the middle
 
 There is an attack that lightning address servers such as zaplocker can do to steal funds from a sender. Show the sender a lightning invoice where the *server* holds the keys instead of the recipient, then settle the sender's payment and never tell the intended recipient about it. Zaplocker proposes solving this problem by signing and broadcasting a bunch of nostr messages at various stages of a payment. This solution is only partially implemented in zaplocker. 
 
