@@ -1666,7 +1666,7 @@ const requestListener = async function( request, response ) {
         "created_at" : Math.floor( Date.now() / 1000 ),
         "kind"       : 0,
         "tags"       : [],
-        "pubkey"     : pubKey,
+        "pubkey"     : pubKeyMinus2,
       }
       var signedProfile = await getSignedEvent(profile, privKey);
       setNote( signedProfile, users[ user_pubkey ][ "relay" ] );
