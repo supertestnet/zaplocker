@@ -1423,7 +1423,7 @@ const requestListener = async function( request, response ) {
   var $_GET = parts.query;
   var page_exists = false;
   allowed_routes.every( route => {
-    if ( parts.path.startsWith( route ) || parts.path == "/" || parts.path == "" ) {
+    if ( parts.path.startsWith( route ) || parts.path == "/" || parts.path == "" || parts.path.startsWith( "/?" ) || parts.path.startsWith( "?" ) ) {
       page_exists = true;
       return;
     }
@@ -1452,7 +1452,7 @@ const requestListener = async function( request, response ) {
       sendResponse( response, status, 200, {'Content-Type': 'application/json'} );
       return;
     }
-    if ( parts.path === "/" ) {
+    if ( parts.path === "/" || parts.path.startsWith ( "/?" ) || parts.path.startsWith( "?" ) ) {
       var filePath = path.join(__dirname, 'index.html');
       var stat = fs.statSync(filePath);
       response.writeHead(200, {
