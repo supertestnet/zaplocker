@@ -634,7 +634,7 @@
                                     if ( status.includes( "success" ) ) {
                                         showModal( `Success, your invoice was settled. Now go in peace.` );
                                     } else if ( status.includes( "undefined" ) ) {
-                                        showModal( `<p>It looks like the invoice you created has the wrong preimage. Did you create it with a custom preimage? Most wallets don't let you but LND does. On the command line, you can create an image with a custom preimage like this:</p><code>lncli addinvoice --preimage ${preimage} --amt ${amount_expected_ln}</code>` );
+                                        showModal( `<p>It looks like the invoice you created has the wrong preimage. Did you create it with a custom preimage? Most wallets don't let you but LND does. On the command line, you can create an image with a custom preimage like this:</p><code style="font-family: monospace;">lncli addinvoice --preimage ${preimage} --amt ${amount_expected_ln}</code>` );
                                     } else {
                                         showModal( `Oh no, we couldn't find a route to you! Consider using the base layer to settle or try again later.` );
                                     }
