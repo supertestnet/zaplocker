@@ -830,6 +830,8 @@
             }
             $( '.log_in' ).onclick = async () => {
                 if ( !window.nostr ) return showModal( `Use a nostr extension such as <a href="https://getalby.com" target="_blank">getalby.com</a>` );
+                if ( typeof window.nostr.enable != "function" ) return showModal( `It looks like you are using an extension such as <a href="https://getalby.com" target="_blank">getalby.com</a> but it doesn't have nostr enabled. Please add a nostr keypair to your extension and then try again` );
+                if ( typeof window.nostr.signSchnorr != "function" ) return showModal( `It looks like you are using a nostr extension such as nos2x that does not support creating schnorr signatures. Please try again with a different extension such as <a href="https://getalby.com" target="_blank">getalby.com</a>` );
                 await window.nostr.enable();
                 user_pubkey = await window.nostr.getPublicKey();
                 var port = "";
