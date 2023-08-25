@@ -88,10 +88,15 @@ function witnessStackToScriptWitness(witness) {
   return buffer2;
 }
 
+var cached_feerate = [15, 1692989070];
 async function getMinFeeRate( network ) {
+  var now = Math.floor( Date.now() / 1000 );
+  if ( cached_feerate[ 1 ] + 10 >= now ) return cached_feerate[ 0 ];
   var fees = await getData( "https://mempool.space/" + network + "api/v1/fees/recommended" );
   if ( !( "hourFee" in fees ) ) return "error -- site down";
   var minfee = fees[ "hourFee" ];
+  var newfees = [minfee, Math.floor( Date.now() / 1000 )];
+  cached_feerate = newfees;
   return minfee;
 }
 
