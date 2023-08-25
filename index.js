@@ -1594,6 +1594,7 @@ const requestListener = async function( request, response ) {
         "allowsNostr":true
       }
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
+      return;
     }
     if ( parts.path.startsWith( "/lnurlp/pay/" ) ) {
       var json = {"status": "ERROR", "reason": "invalid amount"}
