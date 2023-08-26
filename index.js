@@ -96,6 +96,11 @@ async function getMinFeeRate( network ) {
   if ( !( "hourFee" in fees ) ) return "error -- site down";
   var minfee = fees[ "hourFee" ];
   var newfees = [minfee, Math.floor( Date.now() / 1000 )];
+  var nowdate = new Date().toLocaleDateString();
+  var nowtime = new Date().toLocaleTimeString();
+  var newnow = nowdate + " " + nowtime;
+  var texttowrite = ( newnow + ` -- changing cached feerate to ${JSON.stringify( newfees )}\n` );
+  fs.appendFile( "logs.txt", texttowrite, function() {return;});
   cached_feerate = newfees;
   return minfee;
 }
@@ -115,6 +120,12 @@ var destroyOldPendings = async () => {
       }
       if ( status === "SETTLED" ) {
         console.log( "this pending is settled:", pending[ "pmthash" ], "so I'm about to delete it. It belonged to this user:", user, "whose username is", users[ user ][ "username" ] );
+        users[ user ][ "pending" ].splice( index, 1 );
+        index = index - 1;
+        continue;
+      }
+      if ( status === "OPEN" ) {
+        console.log( "this pending is not in an accepted state:", pending[ "pmthash" ], "so I'm about to delete it. It belonged to this user:", user, "whose username is", users[ user ][ "username" ] );
         users[ user ][ "pending" ].splice( index, 1 );
         index = index - 1;
         continue;
@@ -419,15 +430,14 @@ var eventWasReplayedTilSeen = async ( event, the_relay, num ) => {
     return was_seen;
 }
 
-function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddress, toamount, sequence_number ) {
+function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddress, toamount, blockheight, witnesshex ) {
     var keyPairSender = ECPair.fromPrivateKey( Buffer.from( senderPrivkey, 'hex' ), bitcoinjs.networks.mainnet );
     var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.mainnet })
     .addInput({
         hash: inputtxid,
         index: inputindex,
-        sequence: Number( sequence_number ),
         witnessUtxo: {
-            script: Buffer.from( "0014" + bitcoinjs.crypto.ripemd160( bitcoinjs.crypto.sha256( keyPairSender.publicKey ) ).toString( "hex" ), "hex" ),
+            script: Buffer.from( '0020' + witnesshex, "hex" ),
             value: fromamount,
         },
     })
@@ -435,6 +445,7 @@ function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddres
         address: toaddress,
         value: toamount,
     });
+    psbt.setLocktime( blockheight );
     var getFinalScripts = ( txindex, input, script ) => {
         // Step 1: Check to make sure the meaningful locking script matches what you expect.
         var decompiled = bitcoinjs.script.decompile( script )
@@ -727,8 +738,8 @@ async function getVout( txid, address, value, network ) {
 }
 
 async function loopTilAddressSendsMoney( address, recovery_info ) {
-    var [ privkey, txid, vout, amount, confs_to_wait, recovery_address ] = recovery_info;
-    //localStorage.content[ "privkey" ], txid_of_deposit, vout, Number( amount ), 40, recovery_address
+    var [ privkey, txid, vout, amount, blockheight_to_wait_for, recovery_address, witnesshex ] = recovery_info;
+    //localStorage.content[ "privkey" ], txid_of_deposit, vout, Number( amount ), 10, recovery_address
     var itSpentMoney = false;
     async function isDataSetYet( data_i_seek ) {
         return new Promise( function( resolve, reject ) {
@@ -740,7 +751,7 @@ async function loopTilAddressSendsMoney( address, recovery_info ) {
                     if ( Number( confs ) > 11 ) {
                         console.log( "time to sweep!" );
                         //sweep the deposit into the recovery address
-                        var recovery_tx = recoverSats( privkey, txid, vout, amount, recovery_address, amount - 500, 40 );
+                        var recovery_tx = recoverSats( privkey, txid, vout, amount, recovery_address, amount - 500, blockheight_to_wait_for, witnesshex );
                         await pushBTCpmt( recovery_tx, "" );
                         resolve( "recovered" );
                     }
@@ -918,7 +929,7 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     return returnable;
 }
 
-async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
+async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witnesshex, passthrough_timelock ) {
     var txid_of_deposit = "";
     var users_pmthash = getinvoicepmthash( invoice );
     var amount_i_will_receive = await getInvoiceAmount( users_pmthash );
@@ -996,14 +1007,16 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount ) {
     }
     //while looping, if address doesn't send money before timelock expires, I sweep money back to myself
     //to do that, I send the privkey (localStorage.content[ "privkey" ]), the txid (txid_of_deposit),
-    //the output number, the value of the deposit (Number( amount )), the number of confs to wait (40), and an address obtained from lnd to loopTilAddressSendsMoney. Then, when that function loops, it checks
-    //how many confs the deposit tx has, and, if it has more than 40, sweeps the money to the address
+    //the output number, the value of the deposit (Number( amount )), the blockheight to wait for,
+    //and an address obtained from lnd to loopTilAddressSendsMoney. Then, when that function loops, it checks
+    //how many confs the deposit tx has, and, if it has more than 10, sweeps the money to the address
     //obtained from lnd
     await waitSomeSeconds( 30 );
+    var blockheight_to_wait_for = passthrough_timelock;
     var vout = await getVout( txid_of_deposit, htlc_address, Number( amount ), "" );
     console.log( "vout:", vout );
     var recovery_address = await getAddress();
-    var recovery_info = [permakey, txid_of_deposit, vout, Number( amount ), 40, recovery_address];
+    var recovery_info = [permakey, txid_of_deposit, vout, Number( amount ), blockheight_to_wait_for, recovery_address, witnesshex];
     var itSentMoney = await loopTilAddressSendsMoney( htlc_address, recovery_info );
     if ( itSentMoney == "recovered" ) {
         return '{"status": "failure", "reason": "The buyer never swept their money so we swept it back"}';
@@ -1300,6 +1313,10 @@ if ( fs.existsSync( "users.txt" ) ) {
   var users = JSON.parse( dbtext );
 }
 
+if ( !fs.existsSync( "logs.txt" ) ) {
+  fs.writeFileSync( "logs.txt", "", function() {return;});
+}
+
 var permakey = "";
 var permapub = "";
 
@@ -1526,6 +1543,8 @@ const requestListener = async function( request, response ) {
         $_GET[ "pmthash" ],
         timelock
       );
+      var witnesshex = bitcoinjs.crypto.sha256( Buffer.from( witness_script, 'hex' ) ).toString( 'hex' );
+      var passthrough_timelock = timelock;
       var htlcObject = bitcoinjs.payments.p2wsh({
         redeem: {
           output: witness_script,
@@ -1537,7 +1556,7 @@ const requestListener = async function( request, response ) {
         sendResponse( response, 'error: invalid swap details', 200, {'Content-Type': 'text/plain'} );
         return;
       }
-      payHTLCAndSettleWithPreimage( pmt[ "swap_invoice" ], htlcObject.address, pmt[ "amount" ] );
+      payHTLCAndSettleWithPreimage( pmt[ "swap_invoice" ], htlcObject.address, pmt[ "amount" ], witnesshex, passthrough_timelock );
     }
     if ( parts.path.startsWith( "/test_pubkey" ) ) {
       if ( !$_GET[ "pubkey" ] || !Object.keys( users ).includes( $_GET[ "pubkey" ] ) ) {
@@ -1571,6 +1590,11 @@ const requestListener = async function( request, response ) {
     if ( parts.path.startsWith( "/.well-known/lnurlp/" ) ) {
       var username = parts.path.substring( parts.path.indexOf( "/.well-known/lnurlp/" ) + 20 );
       username = username.toLowerCase();
+      var nowdate = new Date().toLocaleDateString();
+      var nowtime = new Date().toLocaleTimeString();
+      var now = nowdate + " " + nowtime;
+      var texttowrite = ( now + ` -- someone requested ${parts.path}\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       var name_exists = false;
       Object.keys( users ).every( user => {
         if ( users[ user ][ "username" ] == username ) {
@@ -1579,16 +1603,24 @@ const requestListener = async function( request, response ) {
         }
         return true;
       });
+      var texttowrite = ( now + ` -- name exists, right? ${name_exists}\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       if ( !username || username.includes( "/" ) || !name_exists ) {
         sendResponse( response, `error: this username is unknown: ${username}`, 200, {'Content-Type': 'text/plain'} );
         return;
       }
+      var texttowrite = ( now + ` -- about to get feerate\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       var feerate = await getMinFeeRate( "" );
+      var texttowrite = ( now + ` -- cached feerate is ${cached_feerate} and retrieved feerate is ${feerate} sats per byte\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       if ( fee_type === 'absolute' ) {
         var min = Math.floor( 546 + fee + ( ( feerate * 200 ) * 2 ) );
       } else {
         var min = Math.floor( ( 546 + ( ( feerate * 200 ) * 2 ) ) / ( 1 - ( fee / 100 ) ) );
       }
+      var texttowrite = ( now + ` -- min is ${min}\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       var json = {
         "callback":`${"https://" + parts.hostname}/lnurlp/pay/${username}`,
         "minSendable":min * 1000,
@@ -1598,6 +1630,8 @@ const requestListener = async function( request, response ) {
         "nostrPubkey":pubKeyMinus2,
         "allowsNostr":true
       }
+      var texttowrite = ( now + ` -- about to send json: ${JSON.stringify(json)}\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
       return;
     }
@@ -1621,6 +1655,7 @@ const requestListener = async function( request, response ) {
       var amount = Math.round( Number( $_GET[ "amount" ] ) / 1000 );
       console.log( amount, min, amount < min )
       var username = parts.path.substring( parts.path.indexOf( "/lnurlp/pay/" ) + 12, parts.path.indexOf( "?" ) );
+      username = username.toLowerCase();
       var name_exists = false;
       Object.keys( users ).every( user => {
         if ( users[ user ][ "username" ] == username ) {
@@ -1770,9 +1805,10 @@ const requestListener = async function( request, response ) {
           sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
           return;
         }
+        var username = json[ "username" ].toLowerCase();
         var name_exists = false;
         Object.keys( users ).every( user => {
-          if ( users[ user ][ "username" ] == $_GET[ "username" ] ) {
+          if ( users[ user ][ "username" ] == username ) {
             name_exists = true;
             return;
           }
