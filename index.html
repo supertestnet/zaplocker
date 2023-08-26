@@ -862,6 +862,8 @@
                     $( '.user_pubkey' ).value = user_pubkey;
                     $( '.desired_username' ).onkeyup = async () => {
                         var name = $( '.desired_username' ).value;
+                        name = name.toLowerCase();
+                        $( '.desired_username' ).value = name;
                         if ( !name ) {
                             $( '.desired_username' ).classList.remove( "bad_form" );
                             return;                    
@@ -875,6 +877,8 @@
                     }
                     $( '.desired_username' ).onchange = async () => {
                         var name = $( '.desired_username' ).value;
+                        name = name.toLowerCase();
+                        $( '.desired_username' ).value = name;
                         if ( !name ) {
                             $( '.desired_username' ).classList.remove( "bad_form" );
                             return;                    
