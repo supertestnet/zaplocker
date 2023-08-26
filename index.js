@@ -49,6 +49,7 @@ function getData( url ) {
       resolve( res.data );
     }).catch( function( error ) {
       console.log( `axios error involving url ${url}:`, error.message );
+      resolve( "error" );
     });
   });
 }
@@ -93,7 +94,15 @@ async function getMinFeeRate( network ) {
   var now = Math.floor( Date.now() / 1000 );
   if ( cached_feerate[ 1 ] + 10 >= now ) return cached_feerate[ 0 ];
   var fees = await getData( "https://mempool.space/" + network + "api/v1/fees/recommended" );
-  if ( !( "hourFee" in fees ) ) return "error -- site down";
+  if ( fees == "error" ) {
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var newnow = nowdate + " " + nowtime;
+    var texttowrite = ( newnow + ` -- error getting fees\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    console.log( "error getting fees" );
+    return "error -- site down";
+  }
   var minfee = fees[ "hourFee" ];
   var newfees = [minfee, Math.floor( Date.now() / 1000 )];
   var nowdate = new Date().toLocaleDateString();
@@ -104,6 +113,7 @@ async function getMinFeeRate( network ) {
   cached_feerate = newfees;
   return minfee;
 }
+getMinFeeRate( "" );
 
 var destroyOldPendings = async () => {
   var current_blockheight = await getBlockheight( "" );
@@ -111,6 +121,7 @@ var destroyOldPendings = async () => {
     var i; for ( i=0; i<users[ user ][ "pending" ].length; i++ ) {
       var pending = users[ user ][ "pending" ][ i ];
       var index = i;
+      if ( "recovery_tx" in pending && pending[ "recovery_tx" ] && pending[ "recovery_block" ] && pending[ "recovery_block" ] <= current_blockheight ) pushBTCpmt( pending[ "recovery_tx" ], "" );
       var status = await checkInvoiceStatusWithoutLoop( pending[ "pmthash" ] );
       if ( status === "CANCELED" ) {
         console.log( "this pending is canceled:", pending[ "pmthash" ], "so I'm about to delete it. It belonged to this user:", user, "whose username is", users[ user ][ "username" ] );
@@ -430,14 +441,16 @@ var eventWasReplayedTilSeen = async ( event, the_relay, num ) => {
     return was_seen;
 }
 
-function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddress, toamount, blockheight, witnesshex ) {
+function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddress, toamount, blockheight, witnesshash, witnesshex ) {
     var keyPairSender = ECPair.fromPrivateKey( Buffer.from( senderPrivkey, 'hex' ), bitcoinjs.networks.mainnet );
     var psbt = new bitcoinjs.Psbt({ network: bitcoinjs.networks.mainnet })
     .addInput({
         hash: inputtxid,
         index: inputindex,
+        sequence: 0xfffffffe,
+        witnessScript: Buffer.from( witnesshex, "hex" ),
         witnessUtxo: {
-            script: Buffer.from( '0020' + witnesshex, "hex" ),
+            script: Buffer.from( '0020' + witnesshash, "hex" ),
             value: fromamount,
         },
     })
@@ -460,7 +473,7 @@ function recoverSats( senderPrivkey, inputtxid, inputindex, fromamount, toaddres
                 input: bitcoinjs.script.compile([
                     input.partialSig[0].signature,
                     Buffer.from( ECPair.makeRandom().privateKey.toString( "hex" ), "hex" ),
-                 ]),
+                ]),
             }
         });
         return {
@@ -678,46 +691,35 @@ async function howManyConfs( txid, network ) {
     });
 }
 
-async function getAddress() {
-  var address = "";
-  var macaroon = invoicemac;
-  var endpoint = lndendpoint + "/v2/wallet/address/next";
-  let requestBody = {
-    account: "",
-    type: 1,
-    change: false,
-  };
-  let options = {
-    url: endpoint,
-    // Work-around for self-signed certificates.
-    rejectUnauthorized: false,
-    json: true,
-    headers: {
-      'Grpc-Metadata-macaroon': macaroon,
-    },
-    form: JSON.stringify(requestBody),
-  }
-  request.post(options, function(error, response, body) {
-    address = body[ "addr" ];
+function getAddress() {
+  return new Promise( function( resolve, reject ) {
+    var address = "";
+    var macaroon = invoicemac;
+    var endpoint = lndendpoint + "/v2/wallet/address/next";
+    let requestBody = {
+      account: "",
+      type: 1,
+      change: false,
+    };
+    let options = {
+      url: endpoint,
+      // Work-around for self-signed certificates.
+      rejectUnauthorized: false,
+      json: true,
+      headers: {
+        'Grpc-Metadata-macaroon': macaroon,
+      },
+      form: JSON.stringify(requestBody),
+    }
+    request.post(options, function(error, response, body) {
+      var nowdate = new Date().toLocaleDateString();
+      var nowtime = new Date().toLocaleTimeString();
+      var now = nowdate + " " + nowtime;
+      var texttowrite = ( now + ` -- recovery address info: ${JSON.stringify( body )}\n` );
+      fs.appendFile( "logs.txt", texttowrite, function() {return;});
+      resolve( body[ "addr" ] );
+    });
   });
-  async function isNoteSetYet( note_i_seek ) {
-        return new Promise( function( resolve, reject ) {
-            if ( !note_i_seek ) {
-                setTimeout( async function() {
-                    var msg = await isNoteSetYet( address );
-                    resolve( msg );
-                }, 100 );
-            } else {
-                resolve( note_i_seek );
-            }
-        });
-    }
-    async function getTimeoutData() {
-            var address_i_seek = await isNoteSetYet( address );
-            return address_i_seek;
-    }
-    var returnable = await getTimeoutData();
-    return returnable;
 }
 
 async function addressOnceSentMoney( address ) {
@@ -730,7 +732,23 @@ async function addressOnceSentMoney( address ) {
 
 async function getVout( txid, address, value, network ) {
     var vout = -1;
-    var txinfo = await getData( `https://blockstream.info/${network}api/tx/${txid}` );
+    var url = `https://blockstream.info/${network}api/tx/${txid}`;
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- vout url: ${url} and value: ${value}\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    var txinfo = await getData( url );
+    if ( txinfo == "error" ) {
+        await waitSomeSeconds( 3 );
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- failed to get vout, retrying\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
+        var vout = await getVout( txid, address, value, network );
+        return vout;
+    }
     txinfo[ "vout" ].every( function( output, index ) {
         if ( output[ "scriptpubkey_address" ] == address && output[ "value" ] == value ) {vout = index;return;} return true;
     });
@@ -738,7 +756,7 @@ async function getVout( txid, address, value, network ) {
 }
 
 async function loopTilAddressSendsMoney( address, recovery_info ) {
-    var [ privkey, txid, vout, amount, blockheight_to_wait_for, recovery_address, witnesshex ] = recovery_info;
+    var [ privkey, txid, vout, amount, blockheight_to_wait_for, recovery_address, witnesshash, witnesshex ] = recovery_info;
     //localStorage.content[ "privkey" ], txid_of_deposit, vout, Number( amount ), 10, recovery_address
     var itSpentMoney = false;
     async function isDataSetYet( data_i_seek ) {
@@ -748,15 +766,17 @@ async function loopTilAddressSendsMoney( address, recovery_info ) {
                     //check how many confs the deposit tx has
                     var confs = await howManyConfs( txid, "" );
                     console.log( confs );
-                    if ( Number( confs ) > 11 ) {
+                    if ( Number( confs ) > 10 ) {
                         console.log( "time to sweep!" );
                         //sweep the deposit into the recovery address
-                        var recovery_tx = recoverSats( privkey, txid, vout, amount, recovery_address, amount - 500, blockheight_to_wait_for, witnesshex );
+                        var recovery_tx = recoverSats( privkey, txid, vout, amount, recovery_address, amount - 2500, blockheight_to_wait_for, witnesshash, witnesshex );
                         await pushBTCpmt( recovery_tx, "" );
                         resolve( "recovered" );
                     }
                     console.log( "checking for preimage in mempool..." );
-                    itSpentMoney = await addressOnceSentMoney( address );
+                    try {
+                        itSpentMoney = await addressOnceSentMoney( address );
+                    } catch( e ) {}
                     var msg = await isDataSetYet( itSpentMoney );
                     resolve( msg );
                 }, 2000 );
@@ -929,7 +949,7 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     return returnable;
 }
 
-async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witnesshex, passthrough_timelock ) {
+async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witnesshash, passthrough_timelock, userpub, idx, recovery_block, witnesshex ) {
     var txid_of_deposit = "";
     var users_pmthash = getinvoicepmthash( invoice );
     var amount_i_will_receive = await getInvoiceAmount( users_pmthash );
@@ -986,8 +1006,11 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witn
     }
     request.post( options, function( error, response, body ) {
         txid_of_deposit = ( body[ "txid" ] );
-        console.log( "body:", body );
-        console.log( "txid_of_deposit:", txid_of_deposit );
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- just deposited some money, see this tx: ${txid_of_deposit}\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
     });
     async function isDataSetYet( data_i_seek ) {
         return new Promise( function( resolve, reject ) {
@@ -1011,12 +1034,50 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witn
     //and an address obtained from lnd to loopTilAddressSendsMoney. Then, when that function loops, it checks
     //how many confs the deposit tx has, and, if it has more than 10, sweeps the money to the address
     //obtained from lnd
-    await waitSomeSeconds( 30 );
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- about to wait 10 seconds\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    getAddress();
+    await waitSomeSeconds( 10 );
     var blockheight_to_wait_for = passthrough_timelock;
-    var vout = await getVout( txid_of_deposit, htlc_address, Number( amount ), "" );
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- about to get the vout using these params: txid: ${txid_of_deposit}, htlc address: ${htlc_address}, value: ${Number( amount ) - swap_fee - ( feerate * 200 )}\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    var vout = await getVout( txid_of_deposit, htlc_address, Number( Number( amount ) - swap_fee - ( feerate * 200 ) ), "" );
     console.log( "vout:", vout );
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- here is the vout: ${vout} -- now I will get the recovery address\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    console.log( "about to get recovery address" );
     var recovery_address = await getAddress();
-    var recovery_info = [permakey, txid_of_deposit, vout, Number( amount ), blockheight_to_wait_for, recovery_address, witnesshex];
+    console.log( "recovery address:", recovery_address );
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- here is the recovery address: ${recovery_address}\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    var recovery_info = [permakey, txid_of_deposit, vout, Number( Number( amount ) - swap_fee - ( feerate * 200 ) ), blockheight_to_wait_for, recovery_address, witnesshash, witnesshex];
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- about to get the recovery tx\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    var recovery_tx = recoverSats( permakey, txid_of_deposit, vout, Number( Number( amount ) - swap_fee - ( feerate * 200 ) ), recovery_address, Number( amount ) - 2500, blockheight_to_wait_for, witnesshash, witnesshex );
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- recovery tx and recovery block: ${recovery_tx} ${recovery_block}\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
+    users[ userpub ][ "pending" ][ idx ][ "recovery_tx" ] = recovery_tx;
+    users[ userpub ][ "pending" ][ idx ][ "recovery_block" ] = recovery_block;
+    var texttowrite = JSON.stringify( users );
+    fs.writeFileSync( "users.txt", texttowrite, function() {return;});
     var itSentMoney = await loopTilAddressSendsMoney( htlc_address, recovery_info );
     if ( itSentMoney == "recovered" ) {
         return '{"status": "failure", "reason": "The buyer never swept their money so we swept it back"}';
@@ -1537,13 +1598,15 @@ const requestListener = async function( request, response ) {
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
       var current_blockheight = await getBlockheight( "" );
       var timelock = current_blockheight + 10;
+      var recovery_block = timelock + 1;
       var witness_script = generateHtlc(
         pmt[ "serverPubkey" ],
         $_GET[ "swap_pubkey" ],
         $_GET[ "pmthash" ],
         timelock
       );
-      var witnesshex = bitcoinjs.crypto.sha256( Buffer.from( witness_script, 'hex' ) ).toString( 'hex' );
+      var witnesshex = witness_script.toString( "hex" );
+      var witnesshash = bitcoinjs.crypto.sha256( Buffer.from( witness_script, 'hex' ) ).toString( 'hex' );
       var passthrough_timelock = timelock;
       var htlcObject = bitcoinjs.payments.p2wsh({
         redeem: {
@@ -1556,7 +1619,7 @@ const requestListener = async function( request, response ) {
         sendResponse( response, 'error: invalid swap details', 200, {'Content-Type': 'text/plain'} );
         return;
       }
-      payHTLCAndSettleWithPreimage( pmt[ "swap_invoice" ], htlcObject.address, pmt[ "amount" ], witnesshex, passthrough_timelock );
+      payHTLCAndSettleWithPreimage( pmt[ "swap_invoice" ], htlcObject.address, pmt[ "amount" ], witnesshash, passthrough_timelock, pmt[ "user_pubkey" ], idx, recovery_block, witnesshex );
     }
     if ( parts.path.startsWith( "/test_pubkey" ) ) {
       if ( !$_GET[ "pubkey" ] || !Object.keys( users ).includes( $_GET[ "pubkey" ] ) ) {
@@ -1730,7 +1793,7 @@ const requestListener = async function( request, response ) {
       var swap_fee = post_fee_amount - amount;
       var current_blockheight = await getBlockheight( "" );
       expires = Number( expires ) + Number( current_blockheight );
-      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey, nostr_event});
+      users[ user_pubkey ][ "pending" ].push({expires, amount, pmthash, serverPubkey: permapub, swap_invoice, swap_fee, status: "ready", user_pubkey, nostr_event, recovery_tx: null, recovery_block: null});
       var texttowrite = JSON.stringify( users );
       fs.writeFileSync( "users.txt", texttowrite, function() {return;});
       if ( !nostr_tag_exists_and_is_valid ) return;
