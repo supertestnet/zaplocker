@@ -1,6 +1,5 @@
 ![](https://supertestnet.github.io/swap-service/zaplocker-logo.png)
 
-# Zaplocker
 Non-custodial lightning address server with base layer support too
 
 # How to try it
