@@ -38,7 +38,7 @@ To settle on the base layer, the user must say what bitcoin address they want th
 
 # Fixing the man in the middle
 
-There is an attack that lightning address servers such as zaplocker can do to steal funds from a sender. Show the sender a lightning invoice where the *server* holds the keys instead of the recipient, then settle the sender's payment and never tell the intended recipient about it. Zaplocker proposes solving this problem by signing and broadcasting a bunch of nostr messages at various stages of a payment. This solution is only partially implemented in zaplocker. 
+There is an attack that lightning address servers such as zaplocker can do to steal funds from a sender. Show the sender a lightning invoice where the *server* holds the keys instead of the recipient, then settle the sender's payment and never tell the intended recipient about it. Zaplocker proposes solving this problem by signing and broadcasting a bunch of nostr messages at various stages of a payment. This solution is implemented in zaplocker. 
 
 When a user logs in for the first time, they create a bunch of payment hashes for the server to use when generating lightning invoices. Zaplocker has the user *sign their payment hashes* using their nostr public key and displays the user's signature and nostr public key on the endpoint where invoices are generated. Sending wallets can *validate that signature* before sending the payment, that way the sender knows the user has the keys.
 
