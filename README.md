@@ -7,6 +7,10 @@ Non-custodial lightning address server with base layer support too
 
 Go here: https://zaplocker.com
 
+# Video
+
+[![](https://supertestnet.github.io/swap-service/zaplocker-with-youtube-logo.png)](https://www.youtube.com/watch?v=5LYt4H6xA-g)
+
 # Four problems zaplocker solves
 
 (1) End users don't want to run a web server. But lightning addresses don't work without a web server where wallets can request lightning invoices. Zaplocker allows a service provider to run a web server on their users' behalf.
