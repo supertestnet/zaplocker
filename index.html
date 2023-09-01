@@ -4,6 +4,11 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, user-scalable=no">
         <script src="https://bitcoincore.tech/apps/bitcoinjs-ui/lib/bitcoinjs-lib.js"></script>
+        <title>Zaplocker</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono&display=swap" rel="stylesheet">
         <script src="https://bundle.run/browserify-cipher@1.0.1"></script>
         <script src="https://bundle.run/noble-secp256k1@1.2.14"></script>
         <script src="https://bundle.run/varuint-bitcoin@1.1.2"></script>
@@ -105,7 +110,97 @@
                 background-color: tan;
                 padding: 1rem;
             }
+            .black_stripes, .black_stripes_bottom {
+                background: repeating-linear-gradient(
+                  0deg,
+                  white,
+                  white 1rem,
+                  black 1rem,
+                  black 2rem
+                );
+                height: 8rem;
+                display: flex;
+                justify-content: center;
+                align-items: flex-end;
+            }
+            .black_stripes_bottom {
+                align-items: center;
+            }
+            .black_stripes span {
+                font-family: 'Anton', sans-serif;
+                font-weight: bold;
+                font-size: 200%;
+                letter-spacing: 10px;
+                color: red;
+                padding: 1rem 20rem;
+                background-image: linear-gradient(to right, rgba(0,0,0,0) 10%, rgba(255,255,255,1) 35%, rgba(255,255,255,1) 64%, rgba(0,0,0,0) 90%);
+            }
+            .black_stripes_bottom span {
+                padding: 1rem 10rem;
+                background-image: linear-gradient(to right, rgba(0,0,0,0) 10%, rgba(255,255,255,1) 35%, rgba(255,255,255,1) 64%, rgba(0,0,0,0) 90%);
+            }
+            .black_stripes_bottom span button {
+                position: relative;
+                font-family: 'Ubuntu Mono', monospace;
+                font-weight: bold;
+                font-size: 120%;
+                letter-spacing: 3px;
+                color: white;
+                background-image: linear-gradient(to bottom, rgba(255,255,255,1) .5%, rgba(255,0,0,1) 35%, rgba(255,0,0,1) 65%, rgba(255,255,255,1) 99.5%);
+                border: 2px solid darkred;
+                border-radius: 1rem;
+                padding: .4rem 1rem;
+                cursor: pointer;
+            }
+            .black_stripes_bottom span button:active {
+                top: 2px;
+                left: 2px;
+            }
+            .big_btns {
+                display: flex;
+                justify-content: space-between;
+            }
+            .big_btns * {
+                font-family: 'Ubuntu Mono', monospace;
+            }
+            .big_btn {
+                text-align: center;
+            }
+            .big_logo {
+                width: 100% !important;
+                background-size: contain;
+                background-repeat: no-repeat;
+                background-position: center center;
+                height: 6rem;
+                width: 4rem;
+            }
+            .big_num {
+                color: red;
+                font-size: 150%;
+                margin-right: .2rem;
+            }
+            .log_in_logo {
+                background-image: url( 'https://swapservice.xyz/nostr-icon-purple-on-white%201.png' );
+            }
+            .choose_logo {
+                background-size: 80%;
+                background-image: url( 'https://swapservice.xyz/head%201.png' );
+            }
+            .receive_logo {
+                background-image: url( 'https://swapservice.xyz/head-2%201.png' );
+            }
             @media screen and (max-width: 600px) {
+            }
+            @media screen and (max-width: 400px) {
+                .big_btns {
+                    display: block;
+                }
+                .big_btn {
+                    margin: 3rem 0;
+                }
+                .choose_logo {
+                    background-size: 50%;
+                }
             }
         </style>
         <script>
@@ -793,8 +888,33 @@
     </head>
     <body>
         <div class="onboarder">
+            <div class="black_stripes">
+                <span>ZAPLOCKER</span>
+            </div>
+            <p style="text-align: center;"><span style="vertical-align: middle;font-family: 'Ubuntu Mono', monospace;">get a non-custodial lightning address in </span><span style="font-weight: bolder;vertical-align: middle;font-family: 'Ubuntu Mono', monospace; font-size: 150%">3</span><span style="vertical-align: middle;font-family: 'Ubuntu Mono', monospace;"> steps</span></p>
+            <div class="big_btns">
+                <div class="big_btn log_in_big_btn">
+                    <div class="big_logo log_in_logo"></div>
+                    <div class="log_in_label"><span class="big_num log_in_num">1</span>login with nostr</div>
+                </div>
+                <div class="big_btn choose_big_btn">
+                    <div class="big_logo choose_logo"></div>
+                    <div class="choose_label"><span class="big_num choose_num">2</span>choose a username</div>
+                </div>
+                <div class="big_btn receive_big_btn">
+                    <div class="big_logo receive_logo"></div>
+                    <div class="receive_label"><span class="big_num receive_num">3</span>receive payments</div>
+                </div>
+            </div>
+            <p>&nbsp;</p>
+            <div class="black_stripes_bottom">
+                <span>
+                    <button>LOGIN</button>
+                </span>
+            </div>
+<!--
             <div class="header_wrapper">
-                <h1>Zaplocker</h1>
+                <span>&nbsp;</span>
                 <button class="log_in">Log in</button>
             </div>
             <p>Here are the steps to get a non-custodial lightning address</p>
@@ -802,7 +922,7 @@
                 <li>Log in with nostr</li>
                 <li>Choose a username</li>
                 <li>Start receiving payments</li>
-<!--                 <li>We will then give you a lightning address and an lnurl</li>
+                <li>We will then give you a lightning address and an lnurl</li>
                 <li>You should add these to your nostr profile</li>
                 <li>When someone queries for an invoice at your lightning address we will use one of your payment hashes to give them an invoice that we can't settle (we will also show them your signature on it in case they want to verify it)</li>
                 <li>When they pay it we will notify you on nostr to come get your payment</li>
@@ -810,8 +930,9 @@
                 <li>Then you will decrypt your preimages and find the one your payment is locked to</li>
                 <li>Then you'll have two choices: (1) receive the payment on the base layer or (2) receive it on lightning</li>
                 <li>If you want it on the base layer we'll do an atomic swap</li>
-                <li>If you want it on lightning you'll need a wallet that lets you create an invoice with a custom preimage (e.g. LND lets you do this) and then you'll need to paste that invoice here</li> -->
+                <li>If you want it on lightning you'll need a wallet that lets you create an invoice with a custom preimage (e.g. LND lets you do this) and then you'll need to paste that invoice here</li>
             </ol>
+-->
         </div>
         <div class="onboarded hidden">
             <div class="header_wrapper">
@@ -830,7 +951,7 @@
             $( '.log_out' ).onclick = async () => {
                 window.location.reload();
             }
-            $( '.log_in' ).onclick = async () => {
+            $( '.black_stripes_bottom span button' ).onclick = async () => {
                 if ( !window.nostr ) return showModal( `Use a nostr extension such as <a href="https://getalby.com" target="_blank">getalby.com</a>` );
                 if ( typeof window.nostr.enable != "function" ) return showModal( `It looks like you are using an extension such as <a href="https://getalby.com" target="_blank">getalby.com</a> but it doesn't have nostr enabled. Please add a nostr keypair to your extension and then try again` );
                 if ( typeof window.nostr.signSchnorr != "function" ) return showModal( `It looks like you are using a nostr extension such as nos2x that does not support creating schnorr signatures. Please try again with a different extension such as <a href="https://getalby.com" target="_blank">getalby.com</a>` );
