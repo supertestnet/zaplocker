@@ -1706,7 +1706,7 @@ const requestListener = async function( request, response ) {
       } else {
         var min = Math.floor( ( 546 + ( ( feerate * 200 ) * 2 ) ) / ( 1 - ( fee / 100 ) ) );
       }
-      if ( !$_GET || !$_GET[ "amount" ] || isNaN( $_GET[ "amount" ] ) || !parts.path.includes( "?amount=" ) || Math.round( Number( $_GET[ "amount" ] ) / 1000 ) < min ) {
+      if ( !$_GET || !$_GET[ "amount" ] || isNaN( $_GET[ "amount" ] ) || Math.round( Number( $_GET[ "amount" ] ) / 1000 ) < min ) {
         sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json'} );
         return;
       }
