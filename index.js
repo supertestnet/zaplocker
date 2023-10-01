@@ -635,6 +635,42 @@ async function getHodlInvoice( amount, hash, expiry = 40, desc_hash ) {
     return returnable;
 }
 
+async function getLspPubkey() {
+  var pubkey = "";
+  var macaroon = adminmac;
+  var endpoint = lndendpoint + "/v1/getinfo";
+  let options = {
+    url: endpoint,
+    // Work-around for self-signed certificates.
+    rejectUnauthorized: false,
+    json: true,
+    headers: {
+      'Grpc-Metadata-macaroon': macaroon,
+    }
+  }
+  request.get(options, function(error, response, body) {
+    pubkey = body[ "identity_pubkey" ];
+  });
+  async function isNoteSetYet( note_i_seek ) {
+          return new Promise( function( resolve, reject ) {
+                  if ( note_i_seek == "" ) {
+                          setTimeout( async function() {
+                                  var msg = await isNoteSetYet( pubkey );
+                                  resolve( msg );
+                          }, 100 );
+                  } else {
+                          resolve( note_i_seek );
+                  }
+          });
+    }
+    async function getTimeoutData() {
+            var invoice_i_seek = await isNoteSetYet( pubkey );
+            return invoice_i_seek;
+    }
+    var returnable = await getTimeoutData();
+    return returnable;
+}
+
 async function settleHoldInvoice( preimage ) {
   var settled = "";
   const macaroon = invoicemac;
@@ -843,6 +879,11 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     var users_pmthash = getinvoicepmthash( invoice );
     var state_of_held_invoice_with_that_hash = await checkInvoiceStatusWithoutLoop( users_pmthash );
     if ( state_of_held_invoice_with_that_hash != "ACCEPTED" ) {
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- invoice state: ${state_of_held_invoice_with_that_hash}\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
         return "nice try, asking me to pay an invoice without compensation: " + state_of_held_invoice_with_that_hash;
     }
     var amount_i_will_receive = await getInvoiceAmount( users_pmthash );
@@ -856,8 +897,19 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     post_fee_amount = Number( post_fee_amount.toFixed( 0 ) );
     var swap_fee = post_fee_amount - Number( amount_i_will_receive );
     if ( Number( amount_i_am_asked_to_pay ) > Number( amount_i_will_receive ) - swap_fee ) {
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- the user wanted me to send ${Number( amount_i_am_asked_to_pay )} when I will only receive ${Number( amount_i_will_receive ) - swap_fee} as compensation\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
         return "nice try, asking me to send more than I will receive as compensation";
     }
+    var block_when_invoice_that_pays_me_truly_expires = await getPendingHTLCExpiry( users_pmthash );
+    block_when_invoice_that_pays_me_truly_expires = Number( block_when_invoice_that_pays_me_truly_expires );
+    //now that I have a function that gets me the true expiration time of my invoice I no longer need to estimate it
+    //so a bunch of lines below this one are now useless -- but I am keeping them around anyway just in case I
+    //need them in the future or am using them in other parts of my code unbeknownst to me
+    //here begin the useless lines
     //use the creation date of the invoice that pays me to estimate the block when that invoice was created
     //do that by getting the current unix timestamp, the current blockheight, and the invoice creation timestamp,
     var invoice_creation_timestamp = await getInvoiceCreationTimestamp( users_pmthash );
@@ -879,6 +931,12 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     //then subtract X from the current blockheight to get an estimated block when my invoice was created, then add blocks_til_expiry to it
     //assign the result to a variable called block_when_i_consider_the_invoice_that_pays_me_to_expire
     var block_when_i_consider_the_invoice_that_pays_me_to_expire = ( current_blockheight - units_of_600 ) + blocks_til_expiry;
+    //here end the useless lines
+    //a reasonable cltv_limit is one just under the number of blocks til the invoice that pays me expires
+    //recall that the cltv_limit is the limit for the *total route,* not just for the invoice you are asked to pay
+    //var blocks_til_invoice_that_pays_me_expires = block_when_i_consider_the_invoice_that_pays_me_to_expire - current_blockheight;
+    var blocks_til_invoice_that_pays_me_expires = block_when_invoice_that_pays_me_truly_expires - current_blockheight;
+    var reasonable_cltv_limit = blocks_til_invoice_that_pays_me_expires - 2;
     //get the current blockheight and, to it, add the cltv_expiry value of the invoice I am asked to pay (should be 40 usually)
     //assign the result to a variable called block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire
     var expiry_of_invoice_that_pays_me = await getInvoiceHardExpiry( users_pmthash );
@@ -886,6 +944,11 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     var block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire = current_blockheight + Number( expiry_of_invoice_i_am_asked_to_pay );
     //abort if block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire > block_when_i_consider_the_invoice_that_pays_me_to_expire
     if ( Number( block_when_i_consider_the_invoice_i_am_asked_to_pay_to_expire ) > Number( block_when_i_consider_the_invoice_that_pays_me_to_expire ) ) {
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- the user wanted me to pay even though their invoice is about to expire\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
         return "nice try, asking me to pay you when the invoice that pays me is about to expire";
     }
     //because that would mean the recipient can hold my payment til after the invoice that pays me expires
@@ -898,11 +961,17 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     var endpoint = lndendpoint;
     var max_fee = swap_fee - 1;
     if ( max_fee > 500 ) max_fee = 500;
+    var nowdate = new Date().toLocaleDateString();
+    var nowtime = new Date().toLocaleTimeString();
+    var now = nowdate + " " + nowtime;
+    var texttowrite = ( now + ` -- here is the max fee: ${max_fee} and the cltv limit: ${reasonable_cltv_limit}\n` );
+    fs.appendFile( "logs.txt", texttowrite, function() {return;});
     let requestBody = {
         payment_request: invoice,
         fee_limit: {"fixed": String( max_fee )},
         allow_self_payment: true,
-        cltv_limit: Number( cltv_limit )
+//        cltv_limit: Number( cltv_limit )
+        cltv_limit: Number( reasonable_cltv_limit )
     }
     let options = {
         url: endpoint + '/v1/channels/transactions',
@@ -916,6 +985,11 @@ async function payInvoiceAndSettleWithPreimage( invoice ) {
     }
     request.post( options, function( error, response, body ) {
         console.log( "here is the body:", body );
+        var nowdate = new Date().toLocaleDateString();
+        var nowtime = new Date().toLocaleTimeString();
+        var now = nowdate + " " + nowtime;
+        var texttowrite = ( now + ` -- here is the body: ${JSON.stringify( body )}\n` );
+        fs.appendFile( "logs.txt", texttowrite, function() {return;});
         if ( !body[ "payment_preimage" ] ) preimage = `error: ${body[ "payment_error" ]}`;
         else preimage = body[ "payment_preimage" ];
     });
@@ -1076,6 +1150,11 @@ async function payHTLCAndSettleWithPreimage( invoice, htlc_address, amount, witn
     fs.appendFile( "logs.txt", texttowrite, function() {return;});
     users[ userpub ][ "pending" ][ idx ][ "recovery_tx" ] = recovery_tx;
     users[ userpub ][ "pending" ][ idx ][ "recovery_block" ] = recovery_block;
+    //todo: add htlc_address, txid_of_deposit, and pmthash to the user's pending record, then,
+    //when destroyOldPendings() runs, check if the htlc_address exists, and if it does, check
+    //if it sent money, and if it did, get the preimage and settle the corresponding invoice
+    //before destroying the pending -- that way I rerun these functions even if my server
+    //crashed while waiting for the preimage to appear in the mempool
     var texttowrite = JSON.stringify( users );
     fs.writeFileSync( "users.txt", texttowrite, function() {return;});
     var itSentMoney = await loopTilAddressSendsMoney( htlc_address, recovery_info );
@@ -1154,6 +1233,43 @@ async function getInvoiceAmount( hash ) {
     }
     async function getTimeoutData() {
             var data_i_seek = await isDataSetYet( amount );
+            return data_i_seek;
+    }
+    var returnable = await getTimeoutData();
+    return returnable;
+}
+
+async function getPendingHTLCExpiry( hash ) {
+  var expiry = "";
+  const macaroon = invoicemac;
+  const endpoint = lndendpoint;
+  let options = {
+    url: endpoint + '/v1/invoice/' + hash,
+    // Work-around for self-signed certificates.
+    rejectUnauthorized: false,
+    json: true,
+    headers: {
+      'Grpc-Metadata-macaroon': macaroon,
+    },
+  }
+  request.get( options, function( error, response, body ) {
+    expiry = body[ "htlcs" ][ 0 ][ "expiry_height" ];
+    console.log( "expiry:", expiry );
+  });
+  async function isDataSetYet( data_i_seek ) {
+          return new Promise( function( resolve, reject ) {
+                  if ( data_i_seek == "" ) {
+                          setTimeout( async function() {
+                                  var msg = await isDataSetYet( expiry );
+                                  resolve( msg );
+                          }, 100 );
+                  } else {
+                          resolve( data_i_seek );
+                  }
+          });
+    }
+    async function getTimeoutData() {
+            var data_i_seek = await isDataSetYet( expiry );
             return data_i_seek;
     }
     var returnable = await getTimeoutData();
@@ -1401,7 +1517,8 @@ var allowed_routes = [
   "/wallet",
   "/custom_invoice",
   "/check_invoice",
-  "/pay_invoice"
+  "/pay_invoice",
+  "/get_lsp_pubkey"
 ];
 
 var sendResponse = ( response, data, statusCode, content_type ) => {
@@ -1518,6 +1635,11 @@ const requestListener = async function( request, response ) {
             var nostr_tag_is_valid = await nostrTagIsValid( $_GET[ "nostr" ], $_GET[ "amount" ] );
         }
         sendResponse( response, String( nostr_tag_is_valid ), 200, {'Content-Type': 'text/plain'} );
+        return;
+    }
+    if ( parts.path.startsWith( "/get_lsp_pubkey" ) ) {
+        var identity = await getLspPubkey();
+        sendResponse( response, identity, 200, {'Content-Type': 'text/plain'} );
         return;
     }
     if ( parts.path.startsWith( "/pay_invoice" ) ) {
@@ -1748,7 +1870,7 @@ const requestListener = async function( request, response ) {
       var desc_hash = sha256( desc );
       var pmthash = users[ user_pubkey ][ "this_users_hashes" ][ index_of_first_unused_pmthash ][ 0 ];
       console.log( amount );
-      var swap_invoice = await getHodlInvoice( amount, pmthash, 100, desc_hash );
+      var swap_invoice = await getHodlInvoice( amount, pmthash, 256, desc_hash );
       if ( !swap_invoice ) {
         deal_in_progress = false;
         return;
@@ -1761,6 +1883,10 @@ const requestListener = async function( request, response ) {
         routes: [],
         pmthash_sig: users[ user_pubkey ][ "sigs" ].match(/.{1,128}/g)[ index_of_first_unused_pmthash ],
         user_pubkey: user_pubkey,
+      }
+      if ( users[ user_pubkey ][ "relays_array" ] ) {
+          json[ "relays" ] = users[ user_pubkey ][ "relays_array" ];
+          json[ "relays_sig" ] = users[ user_pubkey ][ "relays_sig" ];
       }
       sendResponse( response, JSON.stringify( json ), 200, {'Content-Type': 'application/json; charset=utf-8'} );
       var payment_is_pending = await paymentIsPending( swap_invoice, amount );
@@ -1840,11 +1966,11 @@ const requestListener = async function( request, response ) {
           return;
         }
         var json = JSON.parse( formattedData );
-        if ( Object.keys( json ).length != 6 ) {
+        if ( Object.keys( json ).length != 10 ) {
           sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
           return;
         }
-        if ( !( "username" in json ) || !( "hashes" in json ) || !( "user_pubkey" in json ) || !( "relay" in json ) || !( "ciphertext" in json ) || !( "sigs" in json ) ) {
+        if ( !( "username" in json ) || !( "hashes" in json ) || !( "user_pubkey" in json ) || !( "relay" in json ) || !( "ciphertext" in json ) || !( "sigs" in json ) || !( "relays_array" in json ) || !( "relays_sig" in json ) || !( "lsp_keyhash" in json ) || !( "lsp_keyhash_sig" in json ) ) {
           sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
           return;
         }
@@ -1865,6 +1991,34 @@ const requestListener = async function( request, response ) {
           return;
         }
         if ( typeof json[ "sigs" ] != "string" || json[ "sigs" ].length != 128000 ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
+        if ( typeof json[ "relays_sig" ] != "string" || json[ "relays_sig" ].length != 128 ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
+        if ( typeof json[ "lsp_keyhash" ] != "string" || json[ "lsp_keyhash" ].length != 64 ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
+        if ( typeof json[ "lsp_keyhash_sig" ] != "string" || json[ "lsp_keyhash_sig" ].length != 128 ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
+        if ( typeof json[ "relays_array" ] != "object" || !json[ "relays_array" ].length ) {
+          sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
+          return;
+        }
+        var relays_all_good = true;
+        json[ "relays_array" ].every( relay => {
+            if ( relay.length < 10 || !relay.startsWith( "wss://" ) ) {
+                relays_all_good = false;
+                return;
+            }
+            return true;
+        });
+        if ( !relays_all_good ) {
           sendResponse( response, 'error: invalid json', 200, {'Content-Type': 'text/plain'} );
           return;
         }
@@ -1902,6 +2056,10 @@ const requestListener = async function( request, response ) {
           pending: [],
           sigs: json[ "sigs" ],
           ciphertext: json[ "ciphertext" ],
+          relays_array: json[ "relays_array" ],
+          relays_sig: json[ "relays_sig" ],
+          lsp_keyhash: json[ "lsp_keyhash" ],
+          lsp_keyhash_sig: json[ "lsp_keyhash_sig" ],
         }
         var texttowrite = JSON.stringify( users );
         fs.writeFileSync( "users.txt", texttowrite, function() {return;});
