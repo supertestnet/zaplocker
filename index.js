@@ -1514,9 +1514,9 @@ var allowed_routes = [
   "/.well-known/lnurlp/",
   "/lnurlp/pay/",
   "/start_swap",
-  "/wallet",
-  "/custom_invoice",
-  "/check_invoice",
+//  "/wallet",
+//  "/custom_invoice",
+//  "/check_invoice",
   "/pay_invoice",
   "/get_lsp_pubkey"
 ];
@@ -2071,3 +2071,4 @@ const requestListener = async function( request, response ) {
 
 const server = http.createServer( requestListener );
 server.listen( 8081 );
+
