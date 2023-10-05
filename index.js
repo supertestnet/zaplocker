@@ -1810,7 +1810,7 @@ const requestListener = async function( request, response ) {
         "callback":`${"https://" + parts.hostname}/lnurlp/pay/${username}`,
         "minSendable":min * 1000,
         "maxSendable":9007199254740991,
-        "metadata":`[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`,
+        "metadata":`[[\"text/plain\",\"${username} will be paid via a hodl invoice. Your wallet may show the payment as pending for up to 2 weeks.\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`,
         "tag":"payRequest",
         "nostrPubkey":pubKeyMinus2,
         "allowsNostr":true
@@ -1862,7 +1862,7 @@ const requestListener = async function( request, response ) {
         }
         return true;
       });
-      var desc = `[[\"text/plain\",\"Paying ${username}\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`;
+      var desc = `[[\"text/plain\",\"${username} will be paid via a hodl invoice. Your wallet may show the payment as pending for up to 2 weeks.\"],[\"text/identifier\",\"${username}@${parts.hostname}\"]]`;
       if ( nostr_tag_exists_and_is_valid ) {
         desc = $_GET[ "nostr" ];
         nostr_event = JSON.parse( $_GET[ "nostr" ] );
@@ -1883,6 +1883,7 @@ const requestListener = async function( request, response ) {
         routes: [],
         pmthash_sig: users[ user_pubkey ][ "sigs" ].match(/.{1,128}/g)[ index_of_first_unused_pmthash ],
         user_pubkey: user_pubkey,
+        hodl_invoice: true,
       }
       if ( users[ user_pubkey ][ "relays_array" ] ) {
           json[ "relays" ] = users[ user_pubkey ][ "relays_array" ];
