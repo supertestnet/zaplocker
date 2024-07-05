@@ -4,7 +4,7 @@ Non-custodial lightning address server with base layer support too
 
 # How to try it
 
-Go here: https://zaplocker.com
+It's available on Zeus Wallet
 
 # Video
 
